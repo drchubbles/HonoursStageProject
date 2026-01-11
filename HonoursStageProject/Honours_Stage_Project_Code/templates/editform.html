@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Edit Form{% endblock %}
+
+{% block content %}
+
+<h1>Edit Form</h1>
+
+<div>
+  <a href="{{ url_for('dashboard') }}">← Back to Dashboard</a>
+</div>
+
+<h2>{{ form.title }}</h2>
+<p>{{ form.description }}</p>
+<p>Current version: {{ form_version.version_number }}</p>
+
+<form method="POST" id="editForm">
+
+  <h3>Existing questions</h3>
+  <p>Use ↑ and ↓ to change order. Edit fields to reword. Tick Delete to remove from the next version.</p>
+
+  <div id="existingList">
+    {% for q in questions %}
+      <div class="qrow">
+        <div>
+          <button type="button" onclick="moveUp(this)">↑</button>
+          <button type="button" onclick="moveDown(this)">↓</button>
+        </div>
+
+        <div>
+          <input type="hidden" name="existing_qv_id" value="{{ q.question_version_id }}">
+
+          <div>
+            <label>Prompt</label><br>
+            <input type="text" name="existing_prompt_{{ q.question_version_id }}" value="{{ q.prompt_text }}" required>
+          </div>
+
+          <div>
+            <label>Type</label><br>
+            <select name="existing_type_{{ q.question_version_id }}" onchange="toggleExistingOptions(this)" data-qvid="{{ q.question_version_id }}">
+              <option value="text" {% if q.response_type == "text" %}selected{% endif %}>text</option>
+              <option value="number" {% if q.response_type == "number" %}selected{% endif %}>number</option>
+              <option value="rating" {% if q.response_type == "rating" %}selected{% endif %}>rating</option>
+              <option value="select" {% if q.response_type == "select" %}selected{% endif %}>select</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Required</label><br>
+            <select name="existing_required_{{ q.question_version_id }}">
+              <option value="0" {% if not q.is_required %}selected{% endif %}>No</option>
+              <option value="1" {% if q.is_required %}selected{% endif %}>Yes</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Help text (optional)</label><br>
+            <input type="text" name="existing_help_{{ q.question_version_id }}" value="{{ q.help_text or '' }}">
+          </div>
+
+          <div class="existingOptionsBlock" id="existingOptions_{{ q.question_version_id }}" {% if q.response_type != "select" %}style="display:none;"{% endif %}>
+            <label>Options (one per line)</label><br>
+            <textarea name="existing_options_{{ q.question_version_id }}" rows="5">{% if q.response_type == "select" %}{% for opt in q.options %}{{ opt.option_label }}{% if not loop.last %}{{ "\n" }}{% endif %}{% endfor %}{% endif %}</textarea>
+          </div>
+
+          <textarea name="existing_options_{{ q.question_version_id }}" class="existingOptionsHidden" id="existingOptionsHidden_{{ q.question_version_id }}" style="display:none;" rows="1" {% if q.response_type == "select" %}disabled{% endif %}></textarea>
+        </div>
+
+        <label>
+          <input type="checkbox" name="delete_qv_id" value="{{ q.question_version_id }}">
+          Delete
+        </label>
+      </div>
+    {% endfor %}
+  </div>
+
+  <h3>Add new questions</h3>
+
+  <div id="newQuestions"></div>
+
+  <button type="button" onclick="addNewQuestion()">+ Add Question</button>
+
+  <div style="margin-top:14px;">
+    <button type="submit">Save as New Version</button>
+    <a href="{{ url_for('form') }}">Cancel</a>
+  </div>
+
+</form>
+
+<script>
+  function moveUp(btn) {
+    const row = btn.closest(".qrow");
+    const list = document.getElementById("existingList");
+    const rows = Array.from(list.querySelectorAll(".qrow"));
+    const idx = rows.indexOf(row);
+    if (idx > 0) {
+      list.insertBefore(row, rows[idx - 1]);
+    }
+  }
+
+  function moveDown(btn) {
+    const row = btn.closest(".qrow");
+    const list = document.getElementById("existingList");
+    const rows = Array.from(list.querySelectorAll(".qrow"));
+    const idx = rows.indexOf(row);
+    if (idx >= 0 && idx < rows.length - 1) {
+      list.insertBefore(rows[idx + 1], row);
+    }
+  }
+
+  function toggleExistingOptions(sel) {
+    const qvid = sel.getAttribute("data-qvid");
+    const block = document.getElementById("existingOptions_" + qvid);
+    const hidden = document.getElementById("existingOptionsHidden_" + qvid);
+
+    if (sel.value === "select") {
+      if (block) block.style.display = "block";
+      if (hidden) hidden.disabled = true;
+    } else {
+      if (block) block.style.display = "none";
+      if (hidden) hidden.disabled = false;
+      const ta = block ? block.querySelector("textarea") : null;
+      if (ta) ta.value = "";
+    }
+  }
+
+  function addNewQuestion() {
+    const wrap = document.getElementById("newQuestions");
+    const row = document.createElement("div");
+    row.className = "newq";
+
+    row.innerHTML = `
+      <div>
+        <strong>New question</strong>
+        <button type="button" onclick="removeNewQuestion(this)">Remove</button>
+      </div>
+
+      <div>
+        <label>Prompt</label><br>
+        <input name="new_prompt" type="text" required>
+      </div>
+
+      <div>
+        <label>Type</label><br>
+        <select name="new_type" onchange="toggleNewOptions(this)">
+          <option value="text">text</option>
+          <option value="number">number</option>
+          <option value="rating">rating</option>
+          <option value="select">select</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Required</label><br>
+        <select name="new_required">
+          <option value="0">No</option>
+          <option value="1">Yes</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Help text (optional)</label><br>
+        <input name="new_help" type="text">
+      </div>
+
+      <div class="newOptionsBlock" style="display:none;">
+        <label>Options (one per line)</label><br>
+        <textarea name="new_options" rows="5"></textarea>
+      </div>
+
+      <textarea name="new_options" class="newOptionsHidden" style="display:none;" rows="1"></textarea>
+    `;
+
+    wrap.appendChild(row);
+  }
+
+  function removeNewQuestion(btn) {
+    const row = btn.closest(".newq");
+    if (row) row.remove();
+  }
+
+  function toggleNewOptions(sel) {
+    const row = sel.closest(".newq");
+    if (!row) return;
+
+    const block = row.querySelector(".newOptionsBlock");
+    const hidden = row.querySelector(".newOptionsHidden");
+
+    if (sel.value === "select") {
+      if (block) block.style.display = "block";
+      if (hidden) hidden.disabled = true;
+    } else {
+      if (block) block.style.display = "none";
+      if (hidden) hidden.disabled = false;
+      const ta = block ? block.querySelector("textarea") : null;
+      if (ta) ta.value = "";
+    }
+  }
+
+  (function initExistingOptionBlocks() {
+    const selects = document.querySelectorAll("select[data-qvid]");
+    selects.forEach(s => toggleExistingOptions(s));
+  })();
+</script>
+
+{% endblock %}

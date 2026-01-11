@@ -1,0 +1,139 @@
+<!-- 
+Coding Credits:
+
+For the purposes of acknowledgement, this HTML structure was inspired by the following tutorial:
+https://youtu.be/Z1RJmh_OqeA
+-->
+
+{% extends "base.html" %}
+{% block title %}Form{% endblock %}
+
+{% block content %}
+
+{% if not form %}
+  <p>No active form available.</p>
+  <div style="margin-top:14px;">
+    <a href="{{ url_for('dashboard') }}"
+       style="display:inline-block; padding:8px 12px; border:1px solid #999; text-decoration:none;">
+      ← Back to Dashboard
+    </a>
+  </div>
+{% else %}
+
+<h1>{{ form.title }}</h1>
+<p>{{ form.description }}</p>
+
+<div style="display:flex; gap:24px; align-items:flex-start;">
+
+  <!-- LEFT: MAIN FORM -->
+  <div style="flex:2; min-width:320px;">
+
+    <div style="margin-bottom:14px;">
+      <a href="{{ url_for('dashboard') }}"
+         style="display:inline-block; padding:8px 12px; border:1px solid #999; text-decoration:none;">
+        ← Back to Dashboard
+      </a>
+    </div>
+
+    <form method="POST">
+
+      {% for q in questions %}
+        <div style="margin-bottom:20px;">
+          <label>
+            <strong>{{ q.prompt_text }}</strong>
+            {% if q.is_required %}*{% endif %}
+          </label><br>
+
+          {# TEXT INPUT #}
+          {% if q.response_type == "text" %}
+            <input
+              type="text"
+              name="q_{{ q.question_version_id }}"
+              {% if q.is_required %}required{% endif %}
+              style="width:100%; padding:8px;"
+            >
+
+          {# NUMBER INPUT #}
+          {% elif q.response_type == "number" %}
+            <input
+              type="number"
+              name="q_{{ q.question_version_id }}"
+              {% if q.is_required %}required{% endif %}
+              style="width:100%; padding:8px;"
+            >
+
+          {# RATING INPUT (1–5) #}
+          {% elif q.response_type == "rating" %}
+            <input
+              type="number"
+              min="1"
+              max="5"
+              name="q_{{ q.question_version_id }}"
+              {% if q.is_required %}required{% endif %}
+              style="width:100%; padding:8px;"
+            >
+
+          {# SELECT / DROPDOWN INPUT #}
+          {% elif q.response_type == "select" %}
+            <select
+              name="q_{{ q.question_version_id }}"
+              {% if q.is_required %}required{% endif %}
+              style="width:100%; padding:8px;"
+            >
+              <option value="">-- Please select --</option>
+              {% for opt in q.options %}
+                <option value="{{ opt.option_label }}">{{ opt.option_label }}</option>
+              {% endfor %}
+            </select>
+
+          {# FALLBACK (for unsupported types) #}
+          {% else %}
+            <input
+              type="text"
+              name="q_{{ q.question_version_id }}"
+              placeholder="Unsupported question type: {{ q.response_type }}"
+              style="width:100%; padding:8px;"
+            >
+          {% endif %}
+
+          {% if q.help_text %}
+            <small>{{ q.help_text }}</small>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+      <button type="submit">Submit</button>
+    </form>
+
+  </div>
+
+  <!-- RIGHT: NOTES (NOT SUBMITTED) -->
+  <div style="flex:1; min-width:260px; border:1px solid #ccc; padding:12px;">
+    <h3 style="margin-top:0;">Notes (not saved)</h3>
+    <p style="margin-top:-6px;">
+      You can type anything here. This will not be submitted or stored.
+    </p>
+
+    <textarea
+      id="notesBox"
+      placeholder="Write notes here..."
+      style="width:100%; height:320px; padding:10px; resize:vertical;"
+    ></textarea>
+
+    <div style="margin-top:10px;">
+      <button type="button" onclick="clearNotes()">Clear</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function clearNotes() {
+    const box = document.getElementById("notesBox");
+    if (box) box.value = "";
+  }
+</script>
+
+{% endif %}
+
+{% endblock %}

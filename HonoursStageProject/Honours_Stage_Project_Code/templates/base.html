@@ -5,16 +5,34 @@ For the purposes of acknowledgement, this HTML structure was inspired by the fol
 https://youtu.be/Z1RJmh_OqeA
 -->
 
+<!-- 
+This code is used as a html base for the html, ths allows to save lines on repeating code aSN IS ONE FO TEH ADVANTAGES OF USING 
+-->
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-    {% block head %}{% endblock %}
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Review System{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
-    {% block body %}{% endblock %}
+  <main style="max-width: 520px; margin: 40px auto; padding: 0 16px;">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div style="margin-bottom: 16px;">
+          {% for category, message in messages %}
+            <div style="padding: 10px 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px;">
+              <strong style="text-transform: capitalize;">{{ category }}</strong>: {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
 </body>
 </html>

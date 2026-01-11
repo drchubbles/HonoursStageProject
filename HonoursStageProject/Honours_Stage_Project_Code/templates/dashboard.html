@@ -1,0 +1,33 @@
+<!-- 
+Coding Credits:
+
+For the purposes of acknowledgement, this HTML structure was inspired by the following tutorial:
+https://youtu.be/Z1RJmh_OqeA
+-->
+
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<div style="display:flex; gap:12px; margin-bottom:24px;">
+    <a href="{{ url_for('form') }}">
+        <button type="button" style="padding:10px 16px;">Form</button>
+    </a>
+    {% if session.get("role_name") == "admin" %}
+    <a href="{{ url_for('stats') }}">
+        <button type="button" style="padding:10px 16px;">Stats</button>
+    </a>
+    <a href="{{ url_for('editform') }}">
+        <button type="button" style="padding:10px 16px;">edit Form</button>
+    </a>
+    {% endif %}
+</div>
+
+
+<h1>Dashboard</h1>
+<p>Signed in as <strong>{{ session.get("username") }}</strong>.</p>
+<p>Role: <strong>{{ session.get("role_name") }}</strong></p>
+
+<p><a href="{{ url_for('logout') }}">Sign out</a></p>
+{% endblock %}
