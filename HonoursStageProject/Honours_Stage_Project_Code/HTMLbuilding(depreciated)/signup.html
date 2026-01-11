@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sign up</title>
+</head>
+<body>
+
+<h1>Create an account</h1>
+<!-- link sql database to get questions to let sign in -->
+<form action="dashboard.html" method="GET">
+  
+  <label for="username">Username</label><br>
+  <input id="username" name="username" type="text"
+         style="width:100%; padding:10px; margin:6px 0 12px;"><br>
+
+  <label for="password">Password</label><br>
+  <input id="password" name="password" type="password"
+         style="width:100%; padding:10px; margin:6px 0 12px;"><br>
+
+  <label for="confirm_password">Confirm password</label><br>
+  <input id="confirm_password" name="confirm_password" type="password"
+         style="width:100%; padding:10px; margin:6px 0 12px;"><br>
+
+  <label for="role_id">Account role</label><br>
+  <select id="role_id" name="role_id"
+          style="width:100%; padding:10px; margin:6px 0 16px;">
+    <option value="">Select a role</option>
+    <option value="1">User</option>
+    <option value="2">Admin</option>
+  </select><br>
+
+  <button type="submit" style="padding:10px 14px;">Sign up</button>
+
+</form>
+
+<p style="margin-top:16px;">
+  Already have an account? <a href="index.html">Sign in</a>
+</p>
+
+</body>
+</html>

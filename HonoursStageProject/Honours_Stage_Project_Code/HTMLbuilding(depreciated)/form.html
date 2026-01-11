@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Form</title>
+
+  <style>
+    .page-container {
+      display: flex;
+      gap: 40px;
+      align-items: flex-start;
+    }
+
+    .form-section {
+      flex: 2;
+    }
+
+    .notes-section {
+      flex: 1;
+      border-left: 2px solid #ddd;
+      padding-left: 20px;
+    }
+
+    textarea {
+      width: 100%;
+    }
+
+    input, select {
+      width: 100%;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Form</h1>
+  <p>Please fill in the form below!</p>
+  <p><a href="dashboard.html">Back to Dashboard</a></p>
+
+  <hr>
+
+  <div class="page-container">
+
+    <!-- LEFT: MAIN FORM -->
+    <form id="Form" class="form-section">
+
+      <div>
+        <label for="where_was_error"><strong>Where was the error in the system?</strong></label><br>
+        <small>Select the area where the error occurred.</small><br>
+        <select id="where_was_error" name="where_was_error" required>
+          <option value="">-- choose one --</option>
+          <option value="frontend">Frontend / UI</option>
+          <option value="backend">Backend / API</option>
+          <option value="database">Database</option>
+          <option value="infrastructure">Infrastructure / Host</option>
+          <option value="network">Network</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+
+      <br>
+
+      <div>
+        <label for="reporter_name"><strong>Name?</strong></label><br>
+        <small>Enter your full name.</small><br>
+        <input id="reporter_name" name="reporter_name" type="text" required>
+      </div>
+
+      <br>
+
+      <div>
+        <label for="reporter_email"><strong>Email?</strong></label><br>
+        <small>Enter your email address.</small><br>
+        <input id="reporter_email" name="reporter_email" type="email" required>
+      </div>
+
+      <br>
+
+      <div>
+        <label for="manager_email"><strong>Manager's email:</strong></label><br>
+        <small>Enter your manager's email address.</small><br>
+        <input id="manager_email" name="manager_email" type="email" required>
+      </div>
+
+      <br>
+
+      <div>
+        <label for="why_was_wrong"><strong>Why was this wrong?</strong></label><br>
+        <small>Explain what happened and why it was incorrect.</small><br>
+        <textarea id="why_was_wrong" name="why_was_wrong" rows="4" required></textarea>
+      </div>
+
+      <br>
+
+      <div>
+        <label for="avoid_in_future"><strong>How can this be avoided in the future?</strong></label><br>
+        <small>Describe preventative steps or process changes.</small><br>
+        <textarea id="avoid_in_future" name="avoid_in_future" rows="4" required></textarea>
+      </div>
+
+      <br>
+
+      <button type="submit">Submit</button>
+      <button type="reset">Reset</button>
+    </form>
+
+    <!-- RIGHT: NOTES (NOT SUBMITTED) -->
+    <div class="notes-section">
+      <h3>Notes</h3>
+      <p><small>Personal notes (not submitted)</small></p>
+      <textarea rows="12" placeholder="Write any internal notes here..."></textarea>
+    </div>
+
+  </div>
+
+  <p id="msg"></p>
+
+</body>
+</html>
+
