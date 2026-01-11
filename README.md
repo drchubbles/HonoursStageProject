@@ -33,5 +33,5 @@ virtualenv env
 
 following this use cd to enter the correct folder where the code is and run python app.py
 
-then navigate to [here](http://127.0.0.1:5000/) to see the sytem up and working. *Just to be clear, once this application is actually up and running it will be on its own dedicated server.
+then navigate to [here](http://127.0.0.1:5000/) to see the sytem up and working. *Just to be clear, once this application is actually up and running it will be on its own dedicated server.*
 
