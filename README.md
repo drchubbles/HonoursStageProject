@@ -16,7 +16,7 @@ Areas that have been completed are noted down with an **x**, areas that still ne
 | o | **Dashboard & Data Visualization**| Developing dashboards, visual data displays, charts, and systems to highlight recurring issues for staff.| Milestone 6 – Dashboard|
 |  | **Enhancement & Polish (Optional)**| Adding “nice-to-have” features, usability improvements, and refinements if time allows.| Post-Milestone / Stretch Goals|
 
-This code is done using pylance. In order to ensure it works properly please clone the repositoy and following that, use the SQL scripts provided to create the database. Then ensure you have the packets necissary installed to run the code by running:
+This code is done using pyflare order to ensure it works properly please clone the repositoy and following that, use the SQL scripts provided to create the database. Then ensure you have the packets necissary installed to run the code by running:
 
 ```
 pip install flask flask-sqlalchemy werkzeug
