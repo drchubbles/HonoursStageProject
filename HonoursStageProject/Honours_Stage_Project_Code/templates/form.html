@@ -203,6 +203,14 @@ https://youtu.be/Z1RJmh_OqeA
   }
 
   function applyBranching() {
+    const wraps = Array.from(document.querySelectorAll('[id^="wrap_"]'));
+    const order = wraps.map(w => Number(String(w.id).replace("wrap_", "")));
+    const idxOf = new Map(order.map((qvid, i) => [qvid, i]));
+
+    for (const w of wraps) {
+      w.style.display = "";
+    }
+
     const targetToRules = new Map();
     for (const r of branchingRules) {
       if (!targetToRules.has(r.target)) targetToRules.set(r.target, []);
@@ -227,6 +235,51 @@ https://youtu.be/Z1RJmh_OqeA
 
       if (!visible) {
         const input = document.getElementById("q_" + target);
+        if (input) {
+          if (input.tagName === "DIV") {
+            const boxes = input.querySelectorAll('input[type="checkbox"]');
+            boxes.forEach(cb => cb.checked = false);
+          } else if (input.tagName === "SELECT") {
+            input.value = "";
+          } else {
+            input.value = "";
+          }
+        }
+      }
+    }
+
+    const gotoBySource = new Map();
+    for (const r of branchingRules) {
+      if (r.action !== "goto") continue;
+      if (!gotoBySource.has(r.source)) gotoBySource.set(r.source, []);
+      gotoBySource.get(r.source).push(r);
+    }
+
+    for (const [source, rules] of gotoBySource.entries()) {
+      const sIdx = idxOf.get(Number(source));
+      if (sIdx == null) continue;
+
+      let chosenTarget = null;
+      for (const rule of rules) {
+        if (evalRule(rule)) {
+          chosenTarget = Number(rule.target);
+          break;
+        }
+      }
+
+      if (chosenTarget == null) continue;
+
+      const tIdx = idxOf.get(chosenTarget);
+      if (tIdx == null) continue;
+      if (tIdx <= sIdx) continue;
+
+      for (let i = sIdx + 1; i < tIdx; i++) {
+        const qvid = order[i];
+        const wrap = document.getElementById("wrap_" + qvid);
+        if (!wrap) continue;
+        if (wrap.style.display === "none") continue;
+        wrap.style.display = "none";
+        const input = document.getElementById("q_" + qvid);
         if (input) {
           if (input.tagName === "DIV") {
             const boxes = input.querySelectorAll('input[type="checkbox"]');

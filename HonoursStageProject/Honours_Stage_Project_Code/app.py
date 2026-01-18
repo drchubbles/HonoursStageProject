@@ -439,6 +439,7 @@ def editform():
         delete_ids = set(request.form.getlist("delete_qv_id"))
 
         final_existing_qv_ids = []
+        qv_id_map = {}
 
         for qv_id_str in ordered_existing:
             if not qv_id_str:
@@ -496,6 +497,7 @@ def editform():
 
             if not changed:
                 final_existing_qv_ids.append(qv_id)
+                qv_id_map[qv_id] = qv_id
                 continue
 
             max_ver = (
@@ -530,6 +532,7 @@ def editform():
                     )
 
             final_existing_qv_ids.append(int(new_qv.question_version_id))
+            qv_id_map[qv_id] = int(new_qv.question_version_id)
 
         new_prompts = request.form.getlist("new_prompt")
         new_types = request.form.getlist("new_type")
@@ -606,16 +609,89 @@ def editform():
                 )
             )
 
+        all_set = set(int(x) for x in all_qv_ids)
+
+        b_sources = request.form.getlist("branch_source")
+        b_targets = request.form.getlist("branch_target")
+        b_operators = request.form.getlist("branch_operator")
+        b_compare_option_values = request.form.getlist("branch_compare_option_value")
+        b_actions = request.form.getlist("branch_action")
+        b_priorities = request.form.getlist("branch_priority")
+
+        m = max(len(b_sources), len(b_targets), len(b_operators), len(b_compare_option_values), len(b_actions), len(b_priorities))
+        for i in range(m):
+            src_raw = (b_sources[i] if i < len(b_sources) else "").strip()
+            tgt_raw = (b_targets[i] if i < len(b_targets) else "").strip()
+            op = (b_operators[i] if i < len(b_operators) else "equals").strip() or "equals"
+            cov = (b_compare_option_values[i] if i < len(b_compare_option_values) else None)
+            act = (b_actions[i] if i < len(b_actions) else "goto").strip() or "goto"
+            pr_raw = (b_priorities[i] if i < len(b_priorities) else "0").strip() or "0"
+
+            if not src_raw or not tgt_raw:
+                continue
+
+            try:
+                src_old = int(src_raw)
+                tgt_old = int(tgt_raw)
+                pr = int(pr_raw)
+            except ValueError:
+                continue
+
+            src = int(qv_id_map.get(src_old, src_old))
+            tgt = int(qv_id_map.get(tgt_old, tgt_old))
+
+            if src not in all_set or tgt not in all_set:
+                continue
+
+            if op not in ("equals", "not_equals", "in", "not_in", "gt", "gte", "lt", "lte", "contains", "is_empty", "is_not_empty"):
+                op = "equals"
+            if act not in ("show", "hide", "goto"):
+                act = "goto"
+
+            db.session.add(
+                FormQuestionBranching(
+                    form_version_id=new_fv.form_version_id,
+                    source_question_version_id=src,
+                    target_question_version_id=tgt,
+                    operator=op,
+                    compare_option_value=(cov if cov else None),
+                    compare_text=None,
+                    compare_number=None,
+                    action=act,
+                    priority=pr,
+                )
+            )
+
         db.session.commit()
         flash(f"Form updated. New version: {next_version_number}", "success")
         return redirect(url_for("form"))
 
     questions = _get_questions_for_version(latest_version.form_version_id)
+
+    branches = (
+        FormQuestionBranching.query
+        .filter(FormQuestionBranching.form_version_id == latest_version.form_version_id)
+        .filter(FormQuestionBranching.action == "goto")
+        .all()
+    )
+
+    branch_map = {}
+    for b in branches:
+        src = int(b.source_question_version_id)
+        tgt = int(b.target_question_version_id)
+        key = (b.compare_option_value or "").strip()
+        if not key:
+            continue
+        if src not in branch_map:
+            branch_map[src] = {}
+        branch_map[src][key] = tgt
+
     return render_template(
         "editform.html",
         form=form_obj,
         form_version=latest_version,
         questions=questions,
+        branch_map=branch_map,
     )
 
 

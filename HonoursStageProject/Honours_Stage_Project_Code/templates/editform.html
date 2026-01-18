@@ -13,6 +13,16 @@
 <p>{{ form.description }}</p>
 <p>Current version: {{ form_version.version_number }}</p>
 
+<style>
+  .branchWrap { margin-top: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 10px; background: #fafafa; }
+  .branchRow { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+  .branchRow select { padding: 6px; border-radius: 8px; border: 1px solid #ccc; }
+  .branchRow .branchLabel { min-width: 60px; font-weight: 600; }
+  .qmetaLine { display: flex; gap: 8px; align-items: center; margin: 6px 0 10px 0; font-size: 13px; }
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border: 1px solid #ddd; border-radius: 999px; background: #fff; }
+  .badgeStrong { font-weight: 700; }
+</style>
+
 <form method="POST" id="editForm">
 
   <h3>Existing questions</h3>
@@ -28,6 +38,12 @@
 
         <div>
           <input type="hidden" name="existing_qv_id" value="{{ q.question_version_id }}">
+
+          <div class="qmetaLine">
+            <span class="badge badgeStrong qNum"></span>
+            <span class="badge qType" id="typeBadge_{{ q.question_version_id }}"></span>
+            <span class="badge qBranch" id="branchBadge_{{ q.question_version_id }}"></span>
+          </div>
 
           <div>
             <label>Prompt</label><br>
@@ -62,6 +78,14 @@
             <textarea name="existing_options_{{ q.question_version_id }}" rows="5">{% if q.response_type == "select" %}{% for opt in q.options %}{{ opt.option_label }}{% if not loop.last %}{{ "\n" }}{% endif %}{% endfor %}{% endif %}</textarea>
           </div>
 
+          <div id="branchWrap_{{ q.question_version_id }}" class="branchWrap" {% if q.response_type != "select" %}style="display:none;"{% endif %}>
+            <label>
+              <input type="checkbox" class="branchToggle" data-qvid="{{ q.question_version_id }}" {% if branch_map and (q.question_version_id in branch_map) %}checked{% endif %}>
+              Branching
+            </label>
+            <div class="branchPanel" id="branchPanel_{{ q.question_version_id }}" data-branch='{{ (branch_map.get(q.question_version_id) or {})|tojson }}' style="display:{% if branch_map and (q.question_version_id in branch_map) %}block{% else %}none{% endif %};"></div>
+          </div>
+
           <textarea name="existing_options_{{ q.question_version_id }}" class="existingOptionsHidden" id="existingOptionsHidden_{{ q.question_version_id }}" style="display:none;" rows="1" {% if q.response_type == "select" %}disabled{% endif %}></textarea>
         </div>
 
@@ -87,6 +111,75 @@
 </form>
 
 <script>
+  function safeParseJson(s) {
+    try {
+      return JSON.parse(s);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function typeLabel(v) {
+    const map = { text: "Text", number: "Number", rating: "Rating", select: "Select", multi_select: "Multi-select" };
+    return map[v] || v || "";
+  }
+
+  function updateBranchBadge(qvid) {
+    const badge = document.getElementById("branchBadge_" + qvid);
+    if (!badge) return;
+
+    const wrap = document.getElementById("branchWrap_" + qvid);
+    const toggle = wrap ? wrap.querySelector(".branchToggle") : null;
+    const panel = document.getElementById("branchPanel_" + qvid);
+    const typeSel = document.querySelector(`select[name="existing_type_${qvid}"]`);
+
+    if (!typeSel || typeSel.value !== "select") {
+      badge.textContent = "No branching";
+      return;
+    }
+
+    if (!toggle || !toggle.checked) {
+      badge.textContent = "No branching";
+      return;
+    }
+
+    if (!panel) {
+      badge.textContent = "Branching on";
+      return;
+    }
+
+    const parts = [];
+    const selects = panel.querySelectorAll("select.branchTarget");
+    selects.forEach((sel, idx) => {
+      const val = String(sel.value || "").trim();
+      if (!val) return;
+      const letter = String.fromCharCode(65 + idx);
+      let targetText = "";
+      const opt = sel.querySelector(`option[value="${val.replace(/"/g, "\\\"")}"]`);
+      targetText = opt ? (opt.textContent || "") : "";
+      parts.push(`${letter}→${targetText.replace(/^Q\d+:\s*/, "Q")}`);
+    });
+
+    badge.textContent = parts.length ? parts.join(" ") : "Branching on";
+  }
+
+  function refreshMeta() {
+    const list = document.getElementById("existingList");
+    if (!list) return;
+    const rows = Array.from(list.querySelectorAll(".qrow"));
+    rows.forEach((row, idx) => {
+      const qvidEl = row.querySelector('input[name="existing_qv_id"]');
+      if (!qvidEl) return;
+      const qvid = String(qvidEl.value || "").trim();
+      const numEl = row.querySelector(".qNum");
+      if (numEl) numEl.textContent = `Q${idx + 1}`;
+      const typeSel = row.querySelector(`select[name="existing_type_${qvid}"]`);
+      const typeBadge = document.getElementById("typeBadge_" + qvid);
+      if (typeBadge && typeSel) typeBadge.textContent = typeLabel(typeSel.value);
+      updateBranchBadge(qvid);
+    });
+  }
+
   function moveUp(btn) {
     const row = btn.closest(".qrow");
     const list = document.getElementById("existingList");
@@ -95,6 +188,8 @@
     if (idx > 0) {
       list.insertBefore(row, rows[idx - 1]);
     }
+    document.querySelectorAll(".branchToggle").forEach(t => { if (t.checked) rebuildBranchPanel(t.getAttribute("data-qvid")); });
+    refreshMeta();
   }
 
   function moveDown(btn) {
@@ -105,22 +200,133 @@
     if (idx >= 0 && idx < rows.length - 1) {
       list.insertBefore(rows[idx + 1], row);
     }
+    document.querySelectorAll(".branchToggle").forEach(t => { if (t.checked) rebuildBranchPanel(t.getAttribute("data-qvid")); });
+    refreshMeta();
   }
 
   function toggleExistingOptions(sel) {
     const qvid = sel.getAttribute("data-qvid");
     const block = document.getElementById("existingOptions_" + qvid);
     const hidden = document.getElementById("existingOptionsHidden_" + qvid);
+    const branchWrap = document.getElementById("branchWrap_" + qvid);
+    const branchPanel = document.getElementById("branchPanel_" + qvid);
+    const branchToggle = branchWrap ? branchWrap.querySelector(".branchToggle") : null;
 
     if (sel.value === "select") {
       if (block) block.style.display = "block";
       if (hidden) hidden.disabled = true;
+      if (branchWrap) branchWrap.style.display = "block";
     } else {
       if (block) block.style.display = "none";
       if (hidden) hidden.disabled = false;
       const ta = block ? block.querySelector("textarea") : null;
       if (ta) ta.value = "";
+      if (branchToggle) branchToggle.checked = false;
+      if (branchPanel) branchPanel.style.display = "none";
+      if (branchWrap) branchWrap.style.display = "none";
+      if (branchPanel) branchPanel.innerHTML = "";
     }
+    refreshMeta();
+  }
+
+  function getExistingRowsInOrder() {
+    const list = document.getElementById("existingList");
+    if (!list) return [];
+    const rows = Array.from(list.querySelectorAll(".qrow"));
+    return rows;
+  }
+
+  function getQuestionTargets(currentQvid) {
+    const rows = getExistingRowsInOrder();
+    const targets = [];
+    rows.forEach((row, idx) => {
+      const hidden = row.querySelector('input[name="existing_qv_id"]');
+      if (!hidden) return;
+      const qvid = String(hidden.value || "").trim();
+      if (!qvid) return;
+      if (qvid === String(currentQvid)) return;
+      const del = row.querySelector('input[type="checkbox"][name="delete_qv_id"]');
+      if (del && del.checked) return;
+      const prompt = row.querySelector(`input[name="existing_prompt_${qvid}"]`);
+      const label = prompt ? (prompt.value || "").trim() : "";
+      targets.push({ value: qvid, text: `Q${idx + 1}: ${label || "Untitled"}` });
+    });
+    return targets;
+  }
+
+  function getOptionLinesForQvid(qvid) {
+    const block = document.getElementById("existingOptions_" + qvid);
+    const ta = block ? block.querySelector("textarea") : null;
+    const lines = [];
+    if (!ta) return lines;
+    (ta.value || "").split(/\r?\n/).forEach(l => {
+      const t = String(l || "").trim();
+      if (t) lines.push(t);
+    });
+    return lines;
+  }
+
+  function rebuildBranchPanel(qvid) {
+    const panel = document.getElementById("branchPanel_" + qvid);
+    if (!panel) return;
+
+    const targets = getQuestionTargets(qvid);
+    const options = getOptionLinesForQvid(qvid);
+
+    if (options.length === 0) {
+      panel.innerHTML = "";
+      return;
+    }
+
+    const rows = options.map((opt, idx) => {
+      const letter = String.fromCharCode(65 + idx);
+      const opts = [`<option value="">Next question</option>`].concat(
+        targets.map(t => `<option value="${t.value}">${t.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</option>`)
+      ).join("");
+      return `
+        <div class="branchRow">
+          <div class="branchLabel">${letter}</div>
+          <div>go to</div>
+          <div class="branchRight">
+            <select class="branchTarget" data-qvid="${qvid}" data-opt="${opt.replace(/"/g, "&quot;")}">
+              ${opts}
+            </select>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    panel.innerHTML = `
+      <div class="branchGrid">
+        ${rows}
+      </div>
+    `;
+
+    const saved = safeParseJson(panel.getAttribute("data-branch") || "");
+    if (saved && typeof saved === "object") {
+      panel.querySelectorAll("select.branchTarget").forEach(sel => {
+        const optVal = sel.getAttribute("data-opt") || "";
+        const tgt = saved[optVal];
+        if (tgt) sel.value = String(tgt);
+      });
+    }
+
+    updateBranchBadge(qvid);
+  }
+
+  function onBranchToggleChanged(toggleEl) {
+    const qvid = toggleEl.getAttribute("data-qvid");
+    const panel = document.getElementById("branchPanel_" + qvid);
+    if (!panel) return;
+
+    if (toggleEl.checked) {
+      rebuildBranchPanel(qvid);
+      panel.style.display = "block";
+    } else {
+      panel.style.display = "none";
+      panel.innerHTML = "";
+    }
+    updateBranchBadge(qvid);
   }
 
   function addNewQuestion() {
@@ -199,6 +405,116 @@
   (function initExistingOptionBlocks() {
     const selects = document.querySelectorAll("select[data-qvid]");
     selects.forEach(s => toggleExistingOptions(s));
+
+    const toggles = document.querySelectorAll(".branchToggle");
+    toggles.forEach(t => {
+      t.addEventListener("change", function() { onBranchToggleChanged(t); });
+    });
+
+    toggles.forEach(t => {
+      if (t.checked) {
+        const qvid = t.getAttribute("data-qvid");
+        rebuildBranchPanel(qvid);
+      }
+    });
+
+    const list = document.getElementById("existingList");
+    if (list) {
+      list.addEventListener("input", function(e) {
+        const ta = e.target;
+        if (ta && ta.tagName === "TEXTAREA" && ta.name && ta.name.startsWith("existing_options_")) {
+          const qvid = ta.name.replace("existing_options_", "");
+          const wrap = document.getElementById("branchWrap_" + qvid);
+          const toggle = wrap ? wrap.querySelector(".branchToggle") : null;
+          if (toggle && toggle.checked) rebuildBranchPanel(qvid);
+        }
+        const inp = e.target;
+        if (inp && inp.tagName === "INPUT" && inp.name && inp.name.startsWith("existing_prompt_")) {
+          document.querySelectorAll(".branchToggle").forEach(t => {
+            if (t.checked) {
+              const qvid = t.getAttribute("data-qvid");
+              rebuildBranchPanel(qvid);
+            }
+          });
+        }
+
+        if (inp && inp.tagName === "INPUT" && inp.name && inp.name.startsWith("existing_prompt_")) {
+          refreshMeta();
+        }
+
+        if (e.target && e.target.tagName === "SELECT" && e.target.name && e.target.name.startsWith("existing_type_")) {
+          refreshMeta();
+        }
+
+        if (e.target && e.target.classList && e.target.classList.contains("branchTarget")) {
+          const qvid = e.target.getAttribute("data-qvid");
+          if (qvid) updateBranchBadge(qvid);
+        }
+      });
+    }
+
+    const form = document.getElementById("editForm");
+    if (form) {
+      form.addEventListener("submit", function() {
+        form.querySelectorAll('input[name="branch_source"],input[name="branch_target"],input[name="branch_operator"],input[name="branch_compare_option_value"],input[name="branch_action"],input[name="branch_priority"]').forEach(el => el.remove());
+
+        const toggles2 = document.querySelectorAll(".branchToggle");
+        let pr = 0;
+        toggles2.forEach(t => {
+          if (!t.checked) return;
+          const qvid = t.getAttribute("data-qvid");
+          const panel = document.getElementById("branchPanel_" + qvid);
+          if (!panel) return;
+
+          const selects = panel.querySelectorAll("select.branchTarget");
+          selects.forEach(sel => {
+            const target = String(sel.value || "").trim();
+            if (!target) return;
+
+            const optVal = sel.getAttribute("data-opt") || "";
+
+            const i1 = document.createElement("input");
+            i1.type = "hidden";
+            i1.name = "branch_source";
+            i1.value = qvid;
+
+            const i2 = document.createElement("input");
+            i2.type = "hidden";
+            i2.name = "branch_target";
+            i2.value = target;
+
+            const i3 = document.createElement("input");
+            i3.type = "hidden";
+            i3.name = "branch_operator";
+            i3.value = "equals";
+
+            const i4 = document.createElement("input");
+            i4.type = "hidden";
+            i4.name = "branch_compare_option_value";
+            i4.value = optVal;
+
+            const i5 = document.createElement("input");
+            i5.type = "hidden";
+            i5.name = "branch_action";
+            i5.value = "goto";
+
+            const i6 = document.createElement("input");
+            i6.type = "hidden";
+            i6.name = "branch_priority";
+            i6.value = String(pr++);
+
+            form.appendChild(i1);
+            form.appendChild(i2);
+            form.appendChild(i3);
+            form.appendChild(i4);
+            form.appendChild(i5);
+            form.appendChild(i6);
+          });
+        });
+      });
+    }
+
+    refreshMeta();
   })();
 </script>
 
