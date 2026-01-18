@@ -30,9 +30,18 @@ https://youtu.be/Z1RJmh_OqeA
     <div style="margin-bottom:14px;">
       <a href="{{ url_for('dashboard') }}"
          style="display:inline-block; padding:8px 12px; border:1px solid #999; text-decoration:none;">
-        ← Back to Dashboard
+        Back to Dashboard
       </a>
     </div>
+
+    {% if session.get("role_name") == "admin" %}
+      <div style="margin-bottom:14px;">
+        <a href="{{ url_for('editform') }}"
+           style="display:inline-block; padding:8px 12px; border:1px solid #999; text-decoration:none;">
+          Edit Form
+        </a>
+      </div>
+    {% endif %}
 
     <form method="POST">
 

@@ -11,7 +11,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me") # This needs to be changed by Humberside IT when implimnenting so it as a secure backup if secret key does not exist
 
 DB_USER = os.environ.get("DB_USER", "admin")
 DB_PASS = os.environ.get("DB_PASS", "A-Strong-Password")

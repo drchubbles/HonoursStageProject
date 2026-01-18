@@ -1,4 +1,5 @@
 Use honoursstageproject;
+
 CREATE TABLE roles (
   role_id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
   role_name VARCHAR(32) NOT NULL,
@@ -29,7 +30,6 @@ CREATE TABLE forms (
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_by BIGINT UNSIGNED NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
   PRIMARY KEY (form_id),
   UNIQUE KEY uq_forms_form_key (form_key),
   KEY idx_forms_created_by (created_by),
@@ -45,7 +45,6 @@ CREATE TABLE form_versions (
   created_by BIGINT UNSIGNED NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   notes VARCHAR(255) NULL,
-
   PRIMARY KEY (form_version_id),
   UNIQUE KEY uq_form_versions (form_id, version_number),
   KEY idx_form_versions_form_id (form_id),
@@ -60,10 +59,9 @@ CREATE TABLE form_versions (
 
 CREATE TABLE questions (
   question_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  question_key VARCHAR(64) NOT NULL,  
+  question_key VARCHAR(64) NOT NULL,
   created_by BIGINT UNSIGNED NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
   PRIMARY KEY (question_id),
   UNIQUE KEY uq_questions_question_key (question_key),
   KEY idx_questions_created_by (created_by),
@@ -72,23 +70,17 @@ CREATE TABLE questions (
     ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-
 CREATE TABLE question_versions (
   question_version_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   question_id BIGINT UNSIGNED NOT NULL,
   version_number INT UNSIGNED NOT NULL,
-
   prompt_text TEXT NOT NULL,
-
-  response_type VARCHAR(32) NOT NULL,      -- e.g. 'text', 'number', 'rating', 'select'
+  response_type VARCHAR(32) NOT NULL,
   is_required TINYINT(1) NOT NULL DEFAULT 0,
   help_text TEXT NULL,
-
   is_active TINYINT(1) NOT NULL DEFAULT 1,
-
   created_by BIGINT UNSIGNED NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
   PRIMARY KEY (question_version_id),
   UNIQUE KEY uq_question_versions (question_id, version_number),
   KEY idx_qv_question_id (question_id),
@@ -104,10 +96,9 @@ CREATE TABLE question_versions (
 CREATE TABLE question_version_options (
   option_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   question_version_id BIGINT UNSIGNED NOT NULL,
-  option_value VARCHAR(128) NOT NULL,     -- stored value
-  option_label VARCHAR(255) NOT NULL,     -- human readable
+  option_value VARCHAR(128) NOT NULL,
+  option_label VARCHAR(255) NOT NULL,
   sort_order INT UNSIGNED NOT NULL DEFAULT 0,
-
   PRIMARY KEY (option_id),
   UNIQUE KEY uq_qvo (question_version_id, option_value),
   KEY idx_qvo_qv (question_version_id, sort_order),
@@ -121,7 +112,6 @@ CREATE TABLE form_version_questions (
   form_version_id BIGINT UNSIGNED NOT NULL,
   question_version_id BIGINT UNSIGNED NOT NULL,
   sort_order INT UNSIGNED NOT NULL DEFAULT 0,
-
   PRIMARY KEY (form_version_question_id),
   UNIQUE KEY uq_fvq (form_version_id, question_version_id),
   KEY idx_fvq_form_version (form_version_id, sort_order),
@@ -134,13 +124,40 @@ CREATE TABLE form_version_questions (
     ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE form_question_branching (
+  branching_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  form_version_id BIGINT UNSIGNED NOT NULL,
+  source_question_version_id BIGINT UNSIGNED NOT NULL,
+  target_question_version_id BIGINT UNSIGNED NOT NULL,
+  operator ENUM('equals','not_equals','in','not_in','gt','gte','lt','lte','contains','is_empty','is_not_empty')
+    NOT NULL DEFAULT 'equals',
+  compare_option_value VARCHAR(128) NULL,
+  compare_number DECIMAL(18,6) NULL,
+  compare_text VARCHAR(255) NULL,
+  action ENUM('show','hide','goto') NOT NULL DEFAULT 'show',
+  priority INT UNSIGNED NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (branching_id),
+  KEY idx_b_form_version (form_version_id),
+  KEY idx_b_source (source_question_version_id),
+  KEY idx_b_target (target_question_version_id),
+  CONSTRAINT fk_b_form_version
+    FOREIGN KEY (form_version_id) REFERENCES form_versions(form_version_id)
+    ON DELETE CASCADE ON UPDATE RESTRICT,
+  CONSTRAINT fk_b_source_qv
+    FOREIGN KEY (source_question_version_id) REFERENCES question_versions(question_version_id)
+    ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT fk_b_target_qv
+    FOREIGN KEY (target_question_version_id) REFERENCES question_versions(question_version_id)
+    ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE form_submissions (
   submission_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   form_id BIGINT UNSIGNED NOT NULL,
-  form_version_id BIGINT UNSIGNED NOT NULL, 
+  form_version_id BIGINT UNSIGNED NOT NULL,
   submitted_by BIGINT UNSIGNED NOT NULL,
   submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
   PRIMARY KEY (submission_id),
   KEY idx_submissions_form (form_id, submitted_at),
   KEY idx_submissions_user (submitted_by, submitted_at),
@@ -160,12 +177,10 @@ CREATE TABLE submission_answers (
   submission_answer_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   submission_id BIGINT UNSIGNED NOT NULL,
   question_version_id BIGINT UNSIGNED NOT NULL,
-
   answer_text TEXT NULL,
   answer_number DECIMAL(18,6) NULL,
   answer_option_value VARCHAR(128) NULL,
   answered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
   PRIMARY KEY (submission_answer_id),
   UNIQUE KEY uq_submission_question (submission_id, question_version_id),
   KEY idx_answers_submission (submission_id),

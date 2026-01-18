@@ -6,9 +6,8 @@ https://youtu.be/Z1RJmh_OqeA
 -->
 
 <!-- 
-This code is used as a html base for the html, ths allows to save lines on repeating code aSN IS ONE FO TEH ADVANTAGES OF USING 
+This code allows for reduced redundancies in repaaring code and allows fro each page to work off of a similar framework which is one of the advantages of using PyFlask
 -->
-
 
 <!DOCTYPE html>
 <html lang="en">
@@ -18,14 +17,29 @@ This code is used as a html base for the html, ths allows to save lines on repea
   <title>{% block title %}Review System{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
+
 <body>
-  <main style="max-width: 520px; margin: 40px auto; padding: 0 16px;">
+
+  {% block navbar %}
+  <header>
+    <nav>
+      <a href="{{ url_for('dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('form') }}">Form</a>
+
+      {% if session.get("role_name") == "admin" %}
+        <a href="{{ url_for('stats') }}">Stats</a>
+      {% endif %}
+    </nav>
+  </header>
+  {% endblock %}
+
+  <main>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div style="margin-bottom: 16px;">
+        <div class="flash-messages">
           {% for category, message in messages %}
-            <div style="padding: 10px 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px;">
-              <strong style="text-transform: capitalize;">{{ category }}</strong>: {{ message }}
+            <div class="flash-message flash-{{ category }}">
+              <strong>{{ category }}</strong>: {{ message }}
             </div>
           {% endfor %}
         </div>
@@ -34,5 +48,6 @@ This code is used as a html base for the html, ths allows to save lines on repea
 
     {% block content %}{% endblock %}
   </main>
+
 </body>
 </html>
