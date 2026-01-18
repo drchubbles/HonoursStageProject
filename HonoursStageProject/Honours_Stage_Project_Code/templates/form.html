@@ -23,6 +23,8 @@ https://youtu.be/Z1RJmh_OqeA
 <h1>{{ form.title }}</h1>
 <p>{{ form.description }}</p>
 
+<div id="pageMeta" data-form-version-id="{{ form_version.form_version_id if form_version else 0 }}"></div>
+
 <div style="display:flex; gap:24px; align-items:flex-start;">
 
   <div style="flex:2; min-width:320px;">
@@ -156,7 +158,10 @@ https://youtu.be/Z1RJmh_OqeA
 </script>
 
 <script>
-  const formVersionId = {{ (form_version.form_version_id if form_version else 0) | int }};
+  const formVersionId = Number(
+    document.getElementById("pageMeta")?.dataset.formVersionId || 0
+  );
+
   let branchingRules = [];
 
   function getValueForQ(qvid) {
