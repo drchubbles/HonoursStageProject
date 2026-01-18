@@ -2,18 +2,29 @@ USE honoursstageproject;
 
 START TRANSACTION;
 
+INSERT INTO roles (role_name)
+SELECT 'admin'
+WHERE NOT EXISTS (
+  SELECT 1 FROM roles WHERE LOWER(role_name) = 'admin'
+);
+
+INSERT INTO users (username, password_hash, role_id, is_active)
+SELECT
+  'Initial FormUploader',
+  'INITIAL_SEED_USER_NO_LOGIN',
+  r.role_id,
+  1
+FROM roles r
+WHERE LOWER(r.role_name) = 'admin'
+  AND NOT EXISTS (
+    SELECT 1 FROM users u WHERE u.username = 'Initial FormUploader'
+  );
+
 SET @created_by :=
   (SELECT u.user_id
    FROM users u
-   JOIN roles r ON r.role_id = u.role_id
-   WHERE LOWER(r.role_name) = 'admin' AND u.is_active = 1
-   ORDER BY u.user_id
+   WHERE u.username = 'Initial FormUploader'
    LIMIT 1);
-
-SET @created_by := COALESCE(
-  @created_by,
-  (SELECT user_id FROM users WHERE is_active = 1 ORDER BY user_id LIMIT 1)
-);
 
 INSERT INTO forms (form_key, title, description, created_by)
 VALUES (
