@@ -46,59 +46,73 @@ https://youtu.be/Z1RJmh_OqeA
     <form method="POST">
 
       {% for q in questions %}
-        <div style="margin-bottom:20px;">
+        <div id="wrap_{{ q.question_version_id }}" style="margin-bottom:20px;">
           <label>
             <strong>{{ q.prompt_text }}</strong>
             {% if q.is_required %}*{% endif %}
           </label><br>
 
-          {# TEXT INPUT #}
           {% if q.response_type == "text" %}
             <input
               type="text"
               name="q_{{ q.question_version_id }}"
+              id="q_{{ q.question_version_id }}"
               {% if q.is_required %}required{% endif %}
               style="width:100%; padding:8px;"
             >
 
-          {# NUMBER INPUT #}
           {% elif q.response_type == "number" %}
             <input
               type="number"
               name="q_{{ q.question_version_id }}"
+              id="q_{{ q.question_version_id }}"
               {% if q.is_required %}required{% endif %}
               style="width:100%; padding:8px;"
             >
 
-          {# RATING INPUT (1–5) #}
           {% elif q.response_type == "rating" %}
             <input
               type="number"
               min="1"
               max="5"
               name="q_{{ q.question_version_id }}"
+              id="q_{{ q.question_version_id }}"
               {% if q.is_required %}required{% endif %}
               style="width:100%; padding:8px;"
             >
 
-          {# SELECT / DROPDOWN INPUT #}
           {% elif q.response_type == "select" %}
             <select
               name="q_{{ q.question_version_id }}"
+              id="q_{{ q.question_version_id }}"
               {% if q.is_required %}required{% endif %}
               style="width:100%; padding:8px;"
             >
               <option value="">-- Please select --</option>
               {% for opt in q.options %}
-                <option value="{{ opt.option_label }}">{{ opt.option_label }}</option>
+                <option value="{{ opt.option_value }}">{{ opt.option_label }}</option>
               {% endfor %}
             </select>
 
-          {# FALLBACK (for unsupported types) #}
+          {% elif q.response_type == "multi_select" %}
+            <div id="q_{{ q.question_version_id }}">
+              {% for opt in q.options %}
+                <label style="display:block; margin:4px 0;">
+                  <input
+                    type="checkbox"
+                    name="q_{{ q.question_version_id }}"
+                    value="{{ opt.option_value }}"
+                  >
+                  {{ opt.option_label }}
+                </label>
+              {% endfor %}
+            </div>
+
           {% else %}
             <input
               type="text"
               name="q_{{ q.question_version_id }}"
+              id="q_{{ q.question_version_id }}"
               placeholder="Unsupported question type: {{ q.response_type }}"
               style="width:100%; padding:8px;"
             >
@@ -139,6 +153,117 @@ https://youtu.be/Z1RJmh_OqeA
     const box = document.getElementById("notesBox");
     if (box) box.value = "";
   }
+</script>
+
+<script>
+  const formVersionId = {{ (form_version.form_version_id if form_version else 0) | int }};
+  let branchingRules = [];
+
+  function getValueForQ(qvid) {
+    const el = document.getElementById("q_" + qvid);
+    if (!el) return null;
+
+    if (el.tagName === "DIV") {
+      const checked = el.querySelectorAll('input[type="checkbox"]:checked');
+      return Array.from(checked).map(cb => cb.value);
+    }
+
+    return el.value;
+  }
+
+  function evalRule(rule) {
+    const val = getValueForQ(rule.source);
+
+    if (rule.operator === "is_empty") {
+      return val == null || (Array.isArray(val) ? val.length === 0 : String(val).trim() === "");
+    }
+    if (rule.operator === "is_not_empty") {
+      return !(val == null || (Array.isArray(val) ? val.length === 0 : String(val).trim() === ""));
+    }
+
+    if (Array.isArray(val)) {
+      if (rule.operator === "in") return val.includes(rule.compare_option_value);
+      if (rule.operator === "not_in") return !val.includes(rule.compare_option_value);
+      if (rule.operator === "equals") return val.length === 1 && val[0] === rule.compare_option_value;
+      if (rule.operator === "not_equals") return !(val.length === 1 && val[0] === rule.compare_option_value);
+      return false;
+    }
+
+    const s = (val == null) ? "" : String(val);
+
+    if (rule.operator === "equals") return s === String(rule.compare_option_value ?? rule.compare_text ?? "");
+    if (rule.operator === "not_equals") return s !== String(rule.compare_option_value ?? rule.compare_text ?? "");
+    if (rule.operator === "contains") return s.includes(String(rule.compare_text ?? ""));
+    return false;
+  }
+
+  function applyBranching() {
+    const targetToRules = new Map();
+    for (const r of branchingRules) {
+      if (!targetToRules.has(r.target)) targetToRules.set(r.target, []);
+      targetToRules.get(r.target).push(r);
+    }
+
+    for (const [target, rules] of targetToRules.entries()) {
+      const wrap = document.getElementById("wrap_" + target);
+      if (!wrap) continue;
+
+      let visible = true;
+
+      for (const rule of rules) {
+        const matched = evalRule(rule);
+        if (!matched) continue;
+
+        if (rule.action === "show") visible = true;
+        if (rule.action === "hide") visible = false;
+      }
+
+      wrap.style.display = visible ? "" : "none";
+
+      if (!visible) {
+        const input = document.getElementById("q_" + target);
+        if (input) {
+          if (input.tagName === "DIV") {
+            const boxes = input.querySelectorAll('input[type="checkbox"]');
+            boxes.forEach(cb => cb.checked = false);
+          } else if (input.tagName === "SELECT") {
+            input.value = "";
+          } else {
+            input.value = "";
+          }
+        }
+      }
+    }
+  }
+
+  function attachBranchingListeners() {
+    const sources = new Set(branchingRules.map(r => r.source));
+    for (const qvid of sources) {
+      const el = document.getElementById("q_" + qvid);
+      if (!el) continue;
+
+      if (el.tagName === "DIV") {
+        const boxes = el.querySelectorAll('input[type="checkbox"]');
+        boxes.forEach(cb => cb.addEventListener("change", applyBranching));
+      } else {
+        el.addEventListener("change", applyBranching);
+        el.addEventListener("input", applyBranching);
+      }
+    }
+  }
+
+  async function loadBranching() {
+    if (!formVersionId) return;
+    const res = await fetch(`/api/branching/${formVersionId}`);
+    if (!res.ok) return;
+    branchingRules = await res.json();
+    attachBranchingListeners();
+    applyBranching();
+  }
+
+  document.addEventListener("DOMContentLoaded", function() {
+    loadBranching();
+  });
 </script>
 
 {% endif %}

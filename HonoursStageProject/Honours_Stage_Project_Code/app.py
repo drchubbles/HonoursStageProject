@@ -1,3 +1,4 @@
+# app.py
 from __future__ import annotations
 
 import os
@@ -5,13 +6,13 @@ import uuid
 from functools import wraps
 from decimal import Decimal
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me") # This needs to be changed by Humberside IT when implimnenting so it as a secure backup if secret key does not exist
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
 
 DB_USER = os.environ.get("DB_USER", "admin")
 DB_PASS = os.environ.get("DB_PASS", "A-Strong-Password")
@@ -123,6 +124,21 @@ class FormVersionQuestion(db.Model):
     sort_order = db.Column(db.Integer, nullable=False, default=0)
 
 
+class FormQuestionBranching(db.Model):
+    __tablename__ = "form_question_branching"
+
+    branching_id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    form_version_id = db.Column(db.BigInteger, db.ForeignKey("form_versions.form_version_id"), nullable=False)
+    source_question_version_id = db.Column(db.BigInteger, db.ForeignKey("question_versions.question_version_id"), nullable=False)
+    target_question_version_id = db.Column(db.BigInteger, db.ForeignKey("question_versions.question_version_id"), nullable=False)
+    operator = db.Column(db.String(32), nullable=False)
+    compare_option_value = db.Column(db.String(128), nullable=True)
+    compare_number = db.Column(db.Numeric(18, 6), nullable=True)
+    compare_text = db.Column(db.String(255), nullable=True)
+    action = db.Column(db.String(16), nullable=False)
+    priority = db.Column(db.Integer, nullable=False, default=0)
+
+
 class FormSubmission(db.Model):
     __tablename__ = "form_submissions"
 
@@ -203,6 +219,34 @@ def _get_questions_for_version(form_version_id: int):
         .order_by(FormVersionQuestion.sort_order)
         .all()
     )
+
+
+def _get_branching_for_version(form_version_id: int):
+    rows = (
+        db.session.query(FormQuestionBranching)
+        .filter(FormQuestionBranching.form_version_id == form_version_id)
+        .order_by(FormQuestionBranching.priority.asc(), FormQuestionBranching.branching_id.asc())
+        .all()
+    )
+    return [
+        {
+            "source": int(r.source_question_version_id),
+            "target": int(r.target_question_version_id),
+            "operator": r.operator,
+            "compare_option_value": r.compare_option_value,
+            "compare_text": r.compare_text,
+            "compare_number": str(r.compare_number) if r.compare_number is not None else None,
+            "action": r.action,
+            "priority": int(r.priority or 0),
+        }
+        for r in rows
+    ]
+
+
+@app.route("/api/branching/<int:form_version_id>", methods=["GET"])
+@login_required
+def api_branching(form_version_id: int):
+    return jsonify(_get_branching_for_version(form_version_id))
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -311,7 +355,13 @@ def form():
         return render_template("form.html", form=None)
 
     if not latest_version:
-        return render_template("form.html", form=form_obj, form_version=None, questions=[], is_admin=session.get("role_name") == "admin")
+        return render_template(
+            "form.html",
+            form=form_obj,
+            form_version=None,
+            questions=[],
+            is_admin=session.get("role_name") == "admin",
+        )
 
     if request.method == "POST":
         user_id = int(session["user_id"])
@@ -343,6 +393,10 @@ def form():
             elif q.response_type == "select":
                 if raw is not None and str(raw).strip() != "":
                     ans.answer_option_value = str(raw).strip()
+            elif q.response_type == "multi_select":
+                vals = request.form.getlist(field)
+                if vals:
+                    ans.answer_text = "\n".join([str(v).strip() for v in vals if str(v).strip() != ""])
             else:
                 if raw is not None and str(raw).strip() != "":
                     ans.answer_text = str(raw)
@@ -406,21 +460,21 @@ def editform():
             if not new_prompt:
                 new_prompt = current_qv.prompt_text
 
-            if new_type not in ("text", "number", "rating", "select"):
+            if new_type not in ("text", "number", "rating", "select", "multi_select"):
                 new_type = current_qv.response_type
 
             req_bool = (new_required == "1")
             help_val = new_help if new_help else None
 
             current_options_lines = []
-            if current_qv.response_type == "select":
+            if current_qv.response_type in ("select", "multi_select"):
                 for opt in current_qv.options:
                     t = (opt.option_label or "").strip()
                     if t:
                         current_options_lines.append(t)
 
             new_options_lines = []
-            if new_type == "select":
+            if new_type in ("select", "multi_select"):
                 for line in (new_options_text or "").splitlines():
                     t = line.strip()
                     if t:
@@ -436,7 +490,7 @@ def editform():
                 changed = True
             if (current_qv.help_text or "") != (help_val or ""):
                 changed = True
-            if new_type == "select" or current_qv.response_type == "select":
+            if new_type in ("select", "multi_select") or current_qv.response_type in ("select", "multi_select"):
                 if current_options_lines != new_options_lines:
                     changed = True
 
@@ -464,7 +518,7 @@ def editform():
             db.session.add(new_qv)
             db.session.flush()
 
-            if new_type == "select":
+            if new_type in ("select", "multi_select"):
                 for idx, label in enumerate(new_options_lines):
                     db.session.add(
                         QuestionVersionOption(
@@ -494,7 +548,7 @@ def editform():
 
             if not prompt:
                 continue
-            if rtype not in ("text", "number", "rating", "select"):
+            if rtype not in ("text", "number", "rating", "select", "multi_select"):
                 continue
 
             q = Question(question_key=uuid.uuid4().hex, created_by=user_id)
@@ -514,7 +568,7 @@ def editform():
             db.session.add(qv)
             db.session.flush()
 
-            if rtype == "select":
+            if rtype in ("select", "multi_select"):
                 lines = []
                 for line in (options_text or "").splitlines():
                     t = line.strip()
@@ -563,6 +617,7 @@ def editform():
         form_version=latest_version,
         questions=questions,
     )
+
 
 @app.route("/stats")
 @login_required
