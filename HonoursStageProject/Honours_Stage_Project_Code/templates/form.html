@@ -12,12 +12,6 @@ https://youtu.be/Z1RJmh_OqeA
 
 {% if not form %}
   <p>No active form available.</p>
-  <div style="margin-top:14px;">
-    <a href="{{ url_for('dashboard') }}"
-       style="display:inline-block; padding:8px 12px; border:1px solid #999; text-decoration:none;">
-      ← Back to Dashboard
-    </a>
-  </div>
 {% else %}
 
 <h1>{{ form.title }}</h1>
@@ -29,12 +23,6 @@ https://youtu.be/Z1RJmh_OqeA
 
   <div style="flex:2; min-width:320px;">
 
-    <div style="margin-bottom:14px;">
-      <a href="{{ url_for('dashboard') }}"
-         style="display:inline-block; padding:8px 12px; border:1px solid #999; text-decoration:none;">
-        Back to Dashboard
-      </a>
-    </div>
 
     {% if session.get("role_name") == "admin" %}
       <div style="margin-bottom:14px;">
@@ -60,6 +48,7 @@ https://youtu.be/Z1RJmh_OqeA
               name="q_{{ q.question_version_id }}"
               id="q_{{ q.question_version_id }}"
               {% if q.is_required %}required{% endif %}
+              data-required="{% if q.is_required %}1{% else %}0{% endif %}"
               style="width:100%; padding:8px;"
             >
 
@@ -69,6 +58,7 @@ https://youtu.be/Z1RJmh_OqeA
               name="q_{{ q.question_version_id }}"
               id="q_{{ q.question_version_id }}"
               {% if q.is_required %}required{% endif %}
+              data-required="{% if q.is_required %}1{% else %}0{% endif %}"
               style="width:100%; padding:8px;"
             >
 
@@ -80,6 +70,7 @@ https://youtu.be/Z1RJmh_OqeA
               name="q_{{ q.question_version_id }}"
               id="q_{{ q.question_version_id }}"
               {% if q.is_required %}required{% endif %}
+              data-required="{% if q.is_required %}1{% else %}0{% endif %}"
               style="width:100%; padding:8px;"
             >
 
@@ -88,6 +79,7 @@ https://youtu.be/Z1RJmh_OqeA
               name="q_{{ q.question_version_id }}"
               id="q_{{ q.question_version_id }}"
               {% if q.is_required %}required{% endif %}
+              data-required="{% if q.is_required %}1{% else %}0{% endif %}"
               style="width:100%; padding:8px;"
             >
               <option value="">-- Please select --</option>
@@ -164,6 +156,10 @@ https://youtu.be/Z1RJmh_OqeA
 
   let branchingRules = [];
 
+  function _norm(v) {
+    return String(v == null ? "" : v).trim().toLowerCase();
+  }
+
   function getValueForQ(qvid) {
     const el = document.getElementById("q_" + qvid);
     if (!el) return null;
@@ -173,11 +169,25 @@ https://youtu.be/Z1RJmh_OqeA
       return Array.from(checked).map(cb => cb.value);
     }
 
+    // For <select>, return the option value (what is submitted)
     return el.value;
+  }
+
+  function getLabelForQ(qvid) {
+    const el = document.getElementById("q_" + qvid);
+    if (!el) return "";
+    if (el.tagName === "SELECT") {
+      const idx = el.selectedIndex;
+      if (idx >= 0 && el.options && el.options[idx]) {
+        return String(el.options[idx].text || "").trim();
+      }
+    }
+    return "";
   }
 
   function evalRule(rule) {
     const val = getValueForQ(rule.source);
+    const label = getLabelForQ(rule.source);
 
     if (rule.operator === "is_empty") {
       return val == null || (Array.isArray(val) ? val.length === 0 : String(val).trim() === "");
@@ -187,17 +197,41 @@ https://youtu.be/Z1RJmh_OqeA
     }
 
     if (Array.isArray(val)) {
-      if (rule.operator === "in") return val.includes(rule.compare_option_value);
-      if (rule.operator === "not_in") return !val.includes(rule.compare_option_value);
-      if (rule.operator === "equals") return val.length === 1 && val[0] === rule.compare_option_value;
-      if (rule.operator === "not_equals") return !(val.length === 1 && val[0] === rule.compare_option_value);
+      if (rule.operator === "in") {
+        const cmp = String(rule.compare_option_value ?? rule.compare_text ?? "");
+        if (val.includes(cmp)) return true;
+        return val.map(_norm).includes(_norm(cmp));
+      }
+      if (rule.operator === "not_in") {
+        const cmp = String(rule.compare_option_value ?? rule.compare_text ?? "");
+        if (val.includes(cmp)) return false;
+        return !val.map(_norm).includes(_norm(cmp));
+      }
+      if (rule.operator === "equals") {
+        const cmp = String(rule.compare_option_value ?? rule.compare_text ?? "");
+        if (val.length === 1 && val[0] === cmp) return true;
+        return val.length === 1 && _norm(val[0]) === _norm(cmp);
+      }
+      if (rule.operator === "not_equals") {
+        const cmp = String(rule.compare_option_value ?? rule.compare_text ?? "");
+        if (val.length === 1 && val[0] === cmp) return false;
+        return !(val.length === 1 && _norm(val[0]) === _norm(cmp));
+      }
       return false;
     }
 
     const s = (val == null) ? "" : String(val);
+    const cmpVal = String(rule.compare_option_value ?? "");
+    const cmpText = String(rule.compare_text ?? "");
 
-    if (rule.operator === "equals") return s === String(rule.compare_option_value ?? rule.compare_text ?? "");
-    if (rule.operator === "not_equals") return s !== String(rule.compare_option_value ?? rule.compare_text ?? "");
+    // Be tolerant: match either stored option_value or stored option_label.
+    // This avoids "it never shows" when older rows stored labels rather than values.
+    if (rule.operator === "equals") {
+      return (cmpVal && s === cmpVal) || (cmpText && label === cmpText) || (cmpVal && label === cmpVal);
+    }
+    if (rule.operator === "not_equals") {
+      return !((cmpVal && s === cmpVal) || (cmpText && label === cmpText) || (cmpVal && label === cmpVal));
+    }
     if (rule.operator === "contains") return s.includes(String(rule.compare_text ?? ""));
     return false;
   }
@@ -213,6 +247,7 @@ https://youtu.be/Z1RJmh_OqeA
 
     const targetToRules = new Map();
     for (const r of branchingRules) {
+      if (r.action !== "show") continue;
       if (!targetToRules.has(r.target)) targetToRules.set(r.target, []);
       targetToRules.get(r.target).push(r);
     }
@@ -221,14 +256,15 @@ https://youtu.be/Z1RJmh_OqeA
       const wrap = document.getElementById("wrap_" + target);
       if (!wrap) continue;
 
-      let visible = true;
+      let visible = false;
+
+      rules.sort((a,b)=>Number(a.priority||0)-Number(b.priority||0));
 
       for (const rule of rules) {
-        const matched = evalRule(rule);
-        if (!matched) continue;
-
-        if (rule.action === "show") visible = true;
-        if (rule.action === "hide") visible = false;
+        if (evalRule(rule)) {
+          visible = true;
+          break;
+        }
       }
 
       wrap.style.display = visible ? "" : "none";
@@ -244,6 +280,13 @@ https://youtu.be/Z1RJmh_OqeA
           } else {
             input.value = "";
           }
+          if (input.tagName !== "DIV") input.required = false;
+        }
+      } else {
+        const input = document.getElementById("q_" + target);
+        if (input && input.tagName !== "DIV") {
+          const req = String(input.getAttribute("data-required") || "0").trim() === "1";
+          input.required = req;
         }
       }
     }
@@ -260,6 +303,8 @@ https://youtu.be/Z1RJmh_OqeA
       if (sIdx == null) continue;
 
       let chosenTarget = null;
+      rules.sort((a,b)=>Number(a.priority||0)-Number(b.priority||0));
+
       for (const rule of rules) {
         if (evalRule(rule)) {
           chosenTarget = Number(rule.target);

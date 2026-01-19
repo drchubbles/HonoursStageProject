@@ -1,3 +1,10 @@
+<!-- 
+Coding Credits:
+
+For the purposes of acknowledgement, this HTML structure was inspired by the following tutorial:
+https://youtu.be/Z1RJmh_OqeA
+-->
+
 {% extends "base.html" %}
 {% block title %}Edit Form{% endblock %}
 
@@ -5,35 +12,29 @@
 
 <h1>Edit Form</h1>
 
-<div>
-  <a href="{{ url_for('dashboard') }}">← Back to Dashboard</a>
-</div>
-
 <h2>{{ form.title }}</h2>
 <p>{{ form.description }}</p>
 <p>Current version: {{ form_version.version_number }}</p>
 
 <style>
-  .branchWrap { margin-top: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 10px; background: #fafafa; }
-  .branchRow { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
-  .branchRow select { padding: 6px; border-radius: 8px; border: 1px solid #ccc; }
-  .branchRow .branchLabel { min-width: 60px; font-weight: 600; }
-  .qmetaLine { display: flex; gap: 8px; align-items: center; margin: 6px 0 10px 0; font-size: 13px; }
-  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border: 1px solid #ddd; border-radius: 999px; background: #fff; }
-  .badgeStrong { font-weight: 700; }
+  .branchWrap { margin-top:10px; padding:10px; border:1px solid #ddd; }
+  .branchRow { display:flex; gap:10px; align-items:center; margin-top:8px; }
+  .qmetaLine { display:flex; gap:8px; align-items:center; margin:6px 0 10px 0; font-size:13px; }
+  .badge { display:inline-flex; align-items:center; padding:2px 8px; border:1px solid #ddd; background:#fff; }
+  .badgeStrong { font-weight:700; }
 </style>
 
 <form method="POST" id="editForm">
 
   <h3>Existing questions</h3>
-  <p>Use ↑ and ↓ to change order. Edit fields to reword. Tick Delete to remove from the next version.</p>
+  <p>Use ^ and v to change order. Edit fields to reword. Tick Delete to remove from the next version.</p>
 
   <div id="existingList">
     {% for q in questions %}
       <div class="qrow">
         <div>
-          <button type="button" onclick="moveUp(this)">↑</button>
-          <button type="button" onclick="moveDown(this)">↓</button>
+          <button type="button" onclick="moveUp(this)">^</button>
+          <button type="button" onclick="moveDown(this)">v</button>
         </div>
 
         <div>
@@ -80,10 +81,12 @@
 
           <div id="branchWrap_{{ q.question_version_id }}" class="branchWrap" {% if q.response_type != "select" %}style="display:none;"{% endif %}>
             <label>
-              <input type="checkbox" class="branchToggle" data-qvid="{{ q.question_version_id }}" {% if branch_map and (q.question_version_id in branch_map) %}checked{% endif %}>
+              <input type="checkbox" class="branchToggle" data-qvid="{{ q.question_version_id }}" {% if branch_maps and (q.question_version_id in branch_maps) %}checked{% endif %}>
               Branching
             </label>
-            <div class="branchPanel" id="branchPanel_{{ q.question_version_id }}" data-branch='{{ (branch_map.get(q.question_version_id) or {})|tojson }}' style="display:{% if branch_map and (q.question_version_id in branch_map) %}block{% else %}none{% endif %};"></div>
+            <input type="hidden" name="branch_state_source" value="{{ q.question_version_id }}">
+            <input type="hidden" name="branch_state_enabled" value="{% if branch_maps and (q.question_version_id in branch_maps) %}1{% else %}0{% endif %}" class="branchState" data-qvid="{{ q.question_version_id }}">
+            <div class="branchPanel" id="branchPanel_{{ q.question_version_id }}" data-branch='{{ (branch_maps.get(q.question_version_id) or {})|tojson }}' style="display:{% if branch_maps and (q.question_version_id in branch_maps) %}block{% else %}none{% endif %};"></div>
           </div>
 
           <textarea name="existing_options_{{ q.question_version_id }}" class="existingOptionsHidden" id="existingOptionsHidden_{{ q.question_version_id }}" style="display:none;" rows="1" {% if q.response_type == "select" %}disabled{% endif %}></textarea>
@@ -138,29 +141,18 @@
       return;
     }
 
-    if (!toggle || !toggle.checked) {
+    if (!toggle || !toggle.checked || !panel) {
       badge.textContent = "No branching";
       return;
     }
 
-    if (!panel) {
-      badge.textContent = "Branching on";
-      return;
-    }
-
-    const parts = [];
-    const selects = panel.querySelectorAll("select.branchTarget");
-    selects.forEach((sel, idx) => {
-      const val = String(sel.value || "").trim();
-      if (!val) return;
-      const letter = String.fromCharCode(65 + idx);
-      let targetText = "";
-      const opt = sel.querySelector(`option[value="${val.replace(/"/g, "\\\"")}"]`);
-      targetText = opt ? (opt.textContent || "") : "";
-      parts.push(`${letter}→${targetText.replace(/^Q\d+:\s*/, "Q")}`);
+    const rows = Array.from(panel.querySelectorAll('.branchRow'));
+    const active = rows.filter(r => {
+      const tgt = r.querySelector('select[name="branch_map_target"]');
+      return tgt && String(tgt.value || '').trim() !== '';
     });
 
-    badge.textContent = parts.length ? parts.join(" ") : "Branching on";
+    badge.textContent = active.length ? `Branching: ${active.length} path(s)` : "Branching on";
   }
 
   function refreshMeta() {
@@ -211,16 +203,22 @@
     const branchWrap = document.getElementById("branchWrap_" + qvid);
     const branchPanel = document.getElementById("branchPanel_" + qvid);
     const branchToggle = branchWrap ? branchWrap.querySelector(".branchToggle") : null;
+    const stateEl = document.querySelector(`input.branchState[data-qvid="${qvid}"]`);
+    const ta = block ? block.querySelector("textarea") : null;
 
     if (sel.value === "select") {
       if (block) block.style.display = "block";
+      if (ta) ta.disabled = false;
       if (hidden) hidden.disabled = true;
       if (branchWrap) branchWrap.style.display = "block";
     } else {
+      if (stateEl) stateEl.value = "0";
       if (block) block.style.display = "none";
+      if (ta) {
+        ta.disabled = true;
+        ta.value = "";
+      }
       if (hidden) hidden.disabled = false;
-      const ta = block ? block.querySelector("textarea") : null;
-      if (ta) ta.value = "";
       if (branchToggle) branchToggle.checked = false;
       if (branchPanel) branchPanel.style.display = "none";
       if (branchWrap) branchWrap.style.display = "none";
@@ -275,41 +273,40 @@
 
     if (options.length === 0) {
       panel.innerHTML = "";
+      updateBranchBadge(qvid);
       return;
     }
 
-    const rows = options.map((opt, idx) => {
-      const letter = String.fromCharCode(65 + idx);
-      const opts = [`<option value="">Next question</option>`].concat(
-        targets.map(t => `<option value="${t.value}">${t.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</option>`)
-      ).join("");
+    const saved = safeParseJson(panel.getAttribute("data-branch") || "");
+    const map = (saved && typeof saved === "object" && !Array.isArray(saved)) ? saved : {};
+
+    const tgtOpts = [`<option value="">(no question)</option>`].concat(
+      targets.map(t => `<option value="${t.value}">${t.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</option>`)
+    ).join("");
+
+    const rows = options.map(opt => {
+      const safeOpt = String(opt).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const valOpt = String(opt).replace(/"/g, "&quot;");
+      const selectedTarget = map[opt] ? String(map[opt]) : "";
       return `
         <div class="branchRow">
-          <div class="branchLabel">${letter}</div>
-          <div>go to</div>
-          <div class="branchRight">
-            <select class="branchTarget" data-qvid="${qvid}" data-opt="${opt.replace(/"/g, "&quot;")}">
-              ${opts}
-            </select>
-          </div>
+          <div style="min-width:160px;">When <strong>${safeOpt}</strong> is selected</div>
+          <input type="hidden" name="branch_map_source" value="${qvid}">
+          <input type="hidden" name="branch_map_option" value="${valOpt}">
+          <select name="branch_map_target" class="branchMapTarget">${tgtOpts}</select>
         </div>
       `;
     }).join("");
 
-    panel.innerHTML = `
-      <div class="branchGrid">
-        ${rows}
-      </div>
-    `;
+    panel.innerHTML = rows;
 
-    const saved = safeParseJson(panel.getAttribute("data-branch") || "");
-    if (saved && typeof saved === "object") {
-      panel.querySelectorAll("select.branchTarget").forEach(sel => {
-        const optVal = sel.getAttribute("data-opt") || "";
-        const tgt = saved[optVal];
-        if (tgt) sel.value = String(tgt);
-      });
-    }
+    const selects = panel.querySelectorAll("select.branchMapTarget");
+    selects.forEach((sel, idx) => {
+      const opt = options[idx];
+      const t = map[opt] ? String(map[opt]) : "";
+      sel.value = t;
+      sel.addEventListener("change", function() { updateBranchBadge(qvid); });
+    });
 
     updateBranchBadge(qvid);
   }
@@ -319,89 +316,19 @@
     const panel = document.getElementById("branchPanel_" + qvid);
     if (!panel) return;
 
+    const stateEl = document.querySelector(`input.branchState[data-qvid="${qvid}"]`);
+
     if (toggleEl.checked) {
+      if (stateEl) stateEl.value = "1";
       rebuildBranchPanel(qvid);
       panel.style.display = "block";
     } else {
+      if (stateEl) stateEl.value = "0";
       panel.style.display = "none";
       panel.innerHTML = "";
     }
     updateBranchBadge(qvid);
   }
-
-  function addNewQuestion() {
-    const wrap = document.getElementById("newQuestions");
-    const row = document.createElement("div");
-    row.className = "newq";
-
-    row.innerHTML = `
-      <div>
-        <strong>New question</strong>
-        <button type="button" onclick="removeNewQuestion(this)">Remove</button>
-      </div>
-
-      <div>
-        <label>Prompt</label><br>
-        <input name="new_prompt" type="text" required>
-      </div>
-
-      <div>
-        <label>Type</label><br>
-        <select name="new_type" onchange="toggleNewOptions(this)">
-          <option value="text">text</option>
-          <option value="number">number</option>
-          <option value="rating">rating</option>
-          <option value="select">select</option>
-        </select>
-      </div>
-
-      <div>
-        <label>Required</label><br>
-        <select name="new_required">
-          <option value="0">No</option>
-          <option value="1">Yes</option>
-        </select>
-      </div>
-
-      <div>
-        <label>Help text (optional)</label><br>
-        <input name="new_help" type="text">
-      </div>
-
-      <div class="newOptionsBlock" style="display:none;">
-        <label>Options (one per line)</label><br>
-        <textarea name="new_options" rows="5"></textarea>
-      </div>
-
-      <textarea name="new_options" class="newOptionsHidden" style="display:none;" rows="1"></textarea>
-    `;
-
-    wrap.appendChild(row);
-  }
-
-  function removeNewQuestion(btn) {
-    const row = btn.closest(".newq");
-    if (row) row.remove();
-  }
-
-  function toggleNewOptions(sel) {
-    const row = sel.closest(".newq");
-    if (!row) return;
-
-    const block = row.querySelector(".newOptionsBlock");
-    const hidden = row.querySelector(".newOptionsHidden");
-
-    if (sel.value === "select") {
-      if (block) block.style.display = "block";
-      if (hidden) hidden.disabled = true;
-    } else {
-      if (block) block.style.display = "none";
-      if (hidden) hidden.disabled = false;
-      const ta = block ? block.querySelector("textarea") : null;
-      if (ta) ta.value = "";
-    }
-  }
-
   (function initExistingOptionBlocks() {
     const selects = document.querySelectorAll("select[data-qvid]");
     selects.forEach(s => toggleExistingOptions(s));
@@ -445,72 +372,6 @@
         if (e.target && e.target.tagName === "SELECT" && e.target.name && e.target.name.startsWith("existing_type_")) {
           refreshMeta();
         }
-
-        if (e.target && e.target.classList && e.target.classList.contains("branchTarget")) {
-          const qvid = e.target.getAttribute("data-qvid");
-          if (qvid) updateBranchBadge(qvid);
-        }
-      });
-    }
-
-    const form = document.getElementById("editForm");
-    if (form) {
-      form.addEventListener("submit", function() {
-        form.querySelectorAll('input[name="branch_source"],input[name="branch_target"],input[name="branch_operator"],input[name="branch_compare_option_value"],input[name="branch_action"],input[name="branch_priority"]').forEach(el => el.remove());
-
-        const toggles2 = document.querySelectorAll(".branchToggle");
-        let pr = 0;
-        toggles2.forEach(t => {
-          if (!t.checked) return;
-          const qvid = t.getAttribute("data-qvid");
-          const panel = document.getElementById("branchPanel_" + qvid);
-          if (!panel) return;
-
-          const selects = panel.querySelectorAll("select.branchTarget");
-          selects.forEach(sel => {
-            const target = String(sel.value || "").trim();
-            if (!target) return;
-
-            const optVal = sel.getAttribute("data-opt") || "";
-
-            const i1 = document.createElement("input");
-            i1.type = "hidden";
-            i1.name = "branch_source";
-            i1.value = qvid;
-
-            const i2 = document.createElement("input");
-            i2.type = "hidden";
-            i2.name = "branch_target";
-            i2.value = target;
-
-            const i3 = document.createElement("input");
-            i3.type = "hidden";
-            i3.name = "branch_operator";
-            i3.value = "equals";
-
-            const i4 = document.createElement("input");
-            i4.type = "hidden";
-            i4.name = "branch_compare_option_value";
-            i4.value = optVal;
-
-            const i5 = document.createElement("input");
-            i5.type = "hidden";
-            i5.name = "branch_action";
-            i5.value = "goto";
-
-            const i6 = document.createElement("input");
-            i6.type = "hidden";
-            i6.name = "branch_priority";
-            i6.value = String(pr++);
-
-            form.appendChild(i1);
-            form.appendChild(i2);
-            form.appendChild(i3);
-            form.appendChild(i4);
-            form.appendChild(i5);
-            form.appendChild(i6);
-          });
-        });
       });
     }
 

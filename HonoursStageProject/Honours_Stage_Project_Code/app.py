@@ -1,4 +1,4 @@
-# app.py
+
 from __future__ import annotations
 
 import os
@@ -240,6 +240,7 @@ def _get_branching_for_version(form_version_id: int):
             "priority": int(r.priority or 0),
         }
         for r in rows
+        if (r.action or "").strip() in ("show", "goto")
     ]
 
 
@@ -611,57 +612,115 @@ def editform():
 
         all_set = set(int(x) for x in all_qv_ids)
 
-        b_sources = request.form.getlist("branch_source")
-        b_targets = request.form.getlist("branch_target")
-        b_operators = request.form.getlist("branch_operator")
-        b_compare_option_values = request.form.getlist("branch_compare_option_value")
-        b_actions = request.form.getlist("branch_action")
-        b_priorities = request.form.getlist("branch_priority")
+        branch_state_sources = request.form.getlist("branch_state_source")
+        branch_state_enableds = request.form.getlist("branch_state_enabled")
 
-        m = max(len(b_sources), len(b_targets), len(b_operators), len(b_compare_option_values), len(b_actions), len(b_priorities))
-        for i in range(m):
-            src_raw = (b_sources[i] if i < len(b_sources) else "").strip()
-            tgt_raw = (b_targets[i] if i < len(b_targets) else "").strip()
-            op = (b_operators[i] if i < len(b_operators) else "equals").strip() or "equals"
-            cov = (b_compare_option_values[i] if i < len(b_compare_option_values) else None)
-            act = (b_actions[i] if i < len(b_actions) else "goto").strip() or "goto"
-            pr_raw = (b_priorities[i] if i < len(b_priorities) else "0").strip() or "0"
-
-            if not src_raw or not tgt_raw:
+        branch_state = {}
+        for i in range(max(len(branch_state_sources), len(branch_state_enableds))):
+            s = (branch_state_sources[i] if i < len(branch_state_sources) else "").strip()
+            e = (branch_state_enableds[i] if i < len(branch_state_enableds) else "").strip()
+            if not s:
                 continue
-
             try:
-                src_old = int(src_raw)
-                tgt_old = int(tgt_raw)
-                pr = int(pr_raw)
+                branch_state[int(s)] = (e == "1")
             except ValueError:
                 continue
 
+        map_sources = request.form.getlist("branch_map_source")
+        map_options = request.form.getlist("branch_map_option")
+        map_targets = request.form.getlist("branch_map_target")
+
+        submitted_has_maps = any((s or "").strip() for s in map_sources)
+
+        used_sources = set()
+        if submitted_has_maps:
+            m = max(len(map_sources), len(map_options), len(map_targets))
+            per_source = {}
+            for i in range(m):
+                src_raw = (map_sources[i] if i < len(map_sources) else "").strip()
+                opt_raw = (map_options[i] if i < len(map_options) else "").strip()
+                tgt_raw = (map_targets[i] if i < len(map_targets) else "").strip()
+                if not src_raw:
+                    continue
+                try:
+                    src_old = int(src_raw)
+                except ValueError:
+                    continue
+                if src_old in branch_state and not branch_state.get(src_old):
+                    continue
+                used_sources.add(src_old)
+                if not tgt_raw or not opt_raw:
+                    continue
+                try:
+                    tgt_old = int(tgt_raw)
+                except ValueError:
+                    continue
+                per_source.setdefault(src_old, []).append((opt_raw, tgt_old))
+
+            for src_old, pairs in per_source.items():
+                src = int(qv_id_map.get(src_old, src_old))
+                if src not in all_set:
+                    continue
+                pr = 0
+                for opt_val, tgt_old in pairs:
+                    tgt = int(qv_id_map.get(int(tgt_old), int(tgt_old)))
+                    if tgt not in all_set:
+                        continue
+                    db.session.add(
+                        FormQuestionBranching(
+                            form_version_id=new_fv.form_version_id,
+                            source_question_version_id=src,
+                            target_question_version_id=tgt,
+                            operator="equals",
+                            compare_option_value=opt_val,
+                            compare_text=None,
+                            compare_number=None,
+                            action="show",
+                            priority=pr,
+                        )
+                    )
+                    pr += 1
+
+        old_show = (
+            FormQuestionBranching.query
+            .filter(
+                FormQuestionBranching.form_version_id == latest_version.form_version_id,
+                FormQuestionBranching.action == "show",
+            )
+            .order_by(FormQuestionBranching.priority.asc(), FormQuestionBranching.branching_id.asc())
+            .all()
+        )
+        for b in old_show:
+            src_old = int(b.source_question_version_id)
+            if src_old in branch_state and not branch_state.get(src_old):
+                continue
+            if submitted_has_maps and src_old in used_sources:
+                continue
+
             src = int(qv_id_map.get(src_old, src_old))
+            tgt_old = int(b.target_question_version_id)
             tgt = int(qv_id_map.get(tgt_old, tgt_old))
 
             if src not in all_set or tgt not in all_set:
                 continue
 
-            if op not in ("equals", "not_equals", "in", "not_in", "gt", "gte", "lt", "lte", "contains", "is_empty", "is_not_empty"):
-                op = "equals"
-            if act not in ("show", "hide", "goto"):
-                act = "goto"
+            cov = (b.compare_option_value or "").strip()
+            if not cov:
+                continue
 
             db.session.add(
                 FormQuestionBranching(
                     form_version_id=new_fv.form_version_id,
                     source_question_version_id=src,
                     target_question_version_id=tgt,
-                    operator=op,
-                    compare_option_value=(cov if cov else None),
+                    operator="equals",
+                    compare_option_value=cov,
                     compare_text=None,
                     compare_number=None,
-                    action=act,
-                    priority=pr,
+                    action="show",
+                    priority=int(b.priority or 0),
                 )
             )
-
         db.session.commit()
         flash(f"Form updated. New version: {next_version_number}", "success")
         return redirect(url_for("form"))
@@ -670,28 +729,30 @@ def editform():
 
     branches = (
         FormQuestionBranching.query
-        .filter(FormQuestionBranching.form_version_id == latest_version.form_version_id)
-        .filter(FormQuestionBranching.action == "goto")
+        .filter(
+            FormQuestionBranching.form_version_id == latest_version.form_version_id,
+            FormQuestionBranching.action == "show",
+        )
+        .order_by(FormQuestionBranching.priority.asc(), FormQuestionBranching.branching_id.asc())
         .all()
     )
 
-    branch_map = {}
+    branch_maps = {}
     for b in branches:
         src = int(b.source_question_version_id)
-        tgt = int(b.target_question_version_id)
-        key = (b.compare_option_value or "").strip()
-        if not key:
+        cov = (b.compare_option_value or "").strip()
+        if not cov:
             continue
-        if src not in branch_map:
-            branch_map[src] = {}
-        branch_map[src][key] = tgt
+        if src not in branch_maps:
+            branch_maps[src] = {}
+        branch_maps[src][cov] = int(b.target_question_version_id)
 
     return render_template(
         "editform.html",
         form=form_obj,
         form_version=latest_version,
         questions=questions,
-        branch_map=branch_map,
+        branch_maps=branch_maps,
     )
 
 
