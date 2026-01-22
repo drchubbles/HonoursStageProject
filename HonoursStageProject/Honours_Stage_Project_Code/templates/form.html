@@ -10,6 +10,9 @@ https://youtu.be/Z1RJmh_OqeA
 
 {% block content %}
 
+{% set view_only = view_only|default(false) %}
+{% set answers = answers|default({}) %}
+
 {% if not form %}
   <p>No active form available.</p>
 {% else %}
@@ -17,14 +20,23 @@ https://youtu.be/Z1RJmh_OqeA
 <h1>{{ form.title }}</h1>
 <p>{{ form.description }}</p>
 
-<div id="pageMeta" data-form-version-id="{{ form_version.form_version_id if form_version else 0 }}"></div>
+{% if view_only and submission %}
+  <p>
+    Submission: <strong>#{{ submission.submission_id }}</strong>
+    {% if submission.submitted_at %}- {{ submission.submitted_at }}{% endif %}
+  </p>
+{% endif %}
+
+{% if not view_only %}
+  <div id="pageMeta" data-form-version-id="{{ form_version.form_version_id if form_version else 0 }}"></div>
+{% endif %}
 
 <div style="display:flex; gap:24px; align-items:flex-start;">
 
   <div style="flex:2; min-width:320px;">
 
 
-    {% if session.get("role_name") == "admin" %}
+    {% if session.get("role_name") == "admin" and not view_only %}
       <div style="margin-bottom:14px;">
         <a href="{{ url_for('editform') }}"
            style="display:inline-block; padding:8px 12px; border:1px solid #999; text-decoration:none;">
@@ -33,10 +45,15 @@ https://youtu.be/Z1RJmh_OqeA
       </div>
     {% endif %}
 
-    <form method="POST">
+    {% if not view_only %}
+      <form method="POST">
+    {% else %}
+      <div>
+    {% endif %}
 
       {% for q in questions %}
         <div id="wrap_{{ q.question_version_id }}" style="margin-bottom:20px;">
+          {% set ans = answers.get(q.question_version_id) %}
           <label>
             <strong>{{ q.prompt_text }}</strong>
             {% if q.is_required %}*{% endif %}
@@ -47,7 +64,9 @@ https://youtu.be/Z1RJmh_OqeA
               type="text"
               name="q_{{ q.question_version_id }}"
               id="q_{{ q.question_version_id }}"
-              {% if q.is_required %}required{% endif %}
+              value="{{ ans.get('text') if ans and ans.get('text') is not none else '' }}"
+              {% if q.is_required and not view_only %}required{% endif %}
+              {% if view_only %}disabled{% endif %}
               data-required="{% if q.is_required %}1{% else %}0{% endif %}"
               style="width:100%; padding:8px;"
             >
@@ -57,7 +76,9 @@ https://youtu.be/Z1RJmh_OqeA
               type="number"
               name="q_{{ q.question_version_id }}"
               id="q_{{ q.question_version_id }}"
-              {% if q.is_required %}required{% endif %}
+              value="{{ ans.get('number') if ans and ans.get('number') is not none else '' }}"
+              {% if q.is_required and not view_only %}required{% endif %}
+              {% if view_only %}disabled{% endif %}
               data-required="{% if q.is_required %}1{% else %}0{% endif %}"
               style="width:100%; padding:8px;"
             >
@@ -69,7 +90,9 @@ https://youtu.be/Z1RJmh_OqeA
               max="5"
               name="q_{{ q.question_version_id }}"
               id="q_{{ q.question_version_id }}"
-              {% if q.is_required %}required{% endif %}
+              value="{{ ans.get('number') if ans and ans.get('number') is not none else '' }}"
+              {% if q.is_required and not view_only %}required{% endif %}
+              {% if view_only %}disabled{% endif %}
               data-required="{% if q.is_required %}1{% else %}0{% endif %}"
               style="width:100%; padding:8px;"
             >
@@ -78,13 +101,14 @@ https://youtu.be/Z1RJmh_OqeA
             <select
               name="q_{{ q.question_version_id }}"
               id="q_{{ q.question_version_id }}"
-              {% if q.is_required %}required{% endif %}
+              {% if q.is_required and not view_only %}required{% endif %}
+              {% if view_only %}disabled{% endif %}
               data-required="{% if q.is_required %}1{% else %}0{% endif %}"
               style="width:100%; padding:8px;"
             >
               <option value="">-- Please select --</option>
               {% for opt in q.options %}
-                <option value="{{ opt.option_value }}">{{ opt.option_label }}</option>
+                <option value="{{ opt.option_value }}" {% if ans and ans.get('option') == opt.option_value %}selected{% endif %}>{{ opt.option_label }}</option>
               {% endfor %}
             </select>
 
@@ -96,6 +120,8 @@ https://youtu.be/Z1RJmh_OqeA
                     type="checkbox"
                     name="q_{{ q.question_version_id }}"
                     value="{{ opt.option_value }}"
+                    {% if ans and opt.option_value in (ans.get('multi') or []) %}checked{% endif %}
+                    {% if view_only %}disabled{% endif %}
                   >
                   {{ opt.option_label }}
                 </label>
@@ -107,7 +133,9 @@ https://youtu.be/Z1RJmh_OqeA
               type="text"
               name="q_{{ q.question_version_id }}"
               id="q_{{ q.question_version_id }}"
+              value="{{ ans.get('text') if ans and ans.get('text') is not none else '' }}"
               placeholder="Unsupported question type: {{ q.response_type }}"
+              {% if view_only %}disabled{% endif %}
               style="width:100%; padding:8px;"
             >
           {% endif %}
@@ -118,8 +146,15 @@ https://youtu.be/Z1RJmh_OqeA
         </div>
       {% endfor %}
 
-      <button type="submit">Submit</button>
-    </form>
+      {% if not view_only %}
+        <button type="submit">Submit</button>
+      {% endif %}
+
+    {% if not view_only %}
+      </form>
+    {% else %}
+      </div>
+    {% endif %}
 
   </div>
 
@@ -148,6 +183,8 @@ https://youtu.be/Z1RJmh_OqeA
     if (box) box.value = "";
   }
 </script>
+
+{% if not view_only %}
 
 <script>
   const formVersionId = Number(
@@ -368,6 +405,8 @@ https://youtu.be/Z1RJmh_OqeA
     loadBranching();
   });
 </script>
+
+{% endif %}
 
 {% endif %}
 

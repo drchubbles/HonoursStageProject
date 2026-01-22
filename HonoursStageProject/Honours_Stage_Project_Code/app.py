@@ -146,6 +146,7 @@ class FormSubmission(db.Model):
     form_id = db.Column(db.BigInteger, db.ForeignKey("forms.form_id"), nullable=False)
     form_version_id = db.Column(db.BigInteger, db.ForeignKey("form_versions.form_version_id"), nullable=False)
     submitted_by = db.Column(db.BigInteger, db.ForeignKey("users.user_id"), nullable=False)
+    submitted_at = db.Column(db.DateTime, nullable=False, server_default=db.func.current_timestamp())
 
 
 class SubmissionAnswer(db.Model):
@@ -338,7 +339,68 @@ def reset_password():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    return render_template("dashboard.html")
+    is_admin = session.get("role_name") == "admin"
+    user_id = int(session.get("user_id"))
+
+    q = (
+        db.session.query(FormSubmission, Form, FormVersion, User)
+        .join(Form, Form.form_id == FormSubmission.form_id)
+        .join(FormVersion, FormVersion.form_version_id == FormSubmission.form_version_id)
+        .join(User, User.user_id == FormSubmission.submitted_by)
+    )
+
+    if not is_admin:
+        q = q.filter(FormSubmission.submitted_by == user_id)
+
+    submissions = q.order_by(FormSubmission.submitted_at.desc(), FormSubmission.submission_id.desc()).all()
+
+    return render_template("dashboard.html", submissions=submissions, is_admin=is_admin)
+
+
+@app.route("/submission/<int:submission_id>")
+@login_required
+def view_submission(submission_id: int):
+    is_admin = session.get("role_name") == "admin"
+    user_id = int(session.get("user_id"))
+
+    submission = FormSubmission.query.filter_by(submission_id=submission_id).first()
+    if not submission:
+        flash("Submission not found.", "error")
+        return redirect(url_for("dashboard"))
+
+    if not is_admin and int(submission.submitted_by) != user_id:
+        flash("You do not have permission to view that submission.", "error")
+        return redirect(url_for("dashboard"))
+
+    form_obj = Form.query.filter_by(form_id=submission.form_id).first()
+    form_version = FormVersion.query.filter_by(form_version_id=submission.form_version_id).first()
+
+    questions = _get_questions_for_version(submission.form_version_id)
+
+    answer_rows = (
+        SubmissionAnswer.query.filter_by(submission_id=submission.submission_id)
+        .all()
+    )
+
+    answers = {}
+    for a in answer_rows:
+        answers[int(a.question_version_id)] = {
+            "text": a.answer_text,
+            "number": str(a.answer_number) if a.answer_number is not None else None,
+            "option": a.answer_option_value,
+            "multi": (a.answer_text or "").splitlines() if a.answer_text else [],
+        }
+
+    return render_template(
+        "form.html",
+        form=form_obj,
+        form_version=form_version,
+        questions=questions,
+        is_admin=is_admin,
+        view_only=True,
+        answers=answers,
+        submission=submission,
+    )
 
 
 @app.route("/logout")
