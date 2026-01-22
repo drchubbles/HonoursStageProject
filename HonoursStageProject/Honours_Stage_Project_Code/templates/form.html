@@ -206,7 +206,6 @@ https://youtu.be/Z1RJmh_OqeA
       return Array.from(checked).map(cb => cb.value);
     }
 
-    // For <select>, return the option value (what is submitted)
     return el.value;
   }
 
@@ -260,9 +259,6 @@ https://youtu.be/Z1RJmh_OqeA
     const s = (val == null) ? "" : String(val);
     const cmpVal = String(rule.compare_option_value ?? "");
     const cmpText = String(rule.compare_text ?? "");
-
-    // Be tolerant: match either stored option_value or stored option_label.
-    // This avoids "it never shows" when older rows stored labels rather than values.
     if (rule.operator === "equals") {
       return (cmpVal && s === cmpVal) || (cmpText && label === cmpText) || (cmpVal && label === cmpVal);
     }
