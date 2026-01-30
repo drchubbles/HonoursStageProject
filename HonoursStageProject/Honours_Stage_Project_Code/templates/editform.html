@@ -114,6 +114,82 @@ https://youtu.be/Z1RJmh_OqeA
 </form>
 
 <script>
+  // NEW: support for "+ Add Question"
+  let newQuestionIndex = 0;
+
+  function toggleNewOptions(sel) {
+    const row = sel.closest(".newQRow");
+    if (!row) return;
+    const block = row.querySelector(".newOptionsBlock");
+    const ta = row.querySelector('textarea[name="new_options"]');
+
+    if (sel.value === "select" || sel.value === "multi_select") {
+      if (block) block.style.display = "block";
+      if (ta) ta.disabled = false;
+    } else {
+      if (block) block.style.display = "none";
+      if (ta) {
+        ta.disabled = true;
+        ta.value = "";
+      }
+    }
+  }
+
+  function addNewQuestion() {
+    const container = document.getElementById("newQuestions");
+    if (!container) return;
+
+    newQuestionIndex += 1;
+
+    const row = document.createElement("div");
+    row.className = "qrow newQRow";
+    row.innerHTML = `
+      <div class="qmetaLine">
+        <span class="badge badgeStrong">New</span>
+      </div>
+
+      <div>
+        <label>Prompt</label><br>
+        <input type="text" name="new_prompt" required>
+      </div>
+
+      <div>
+        <label>Type</label><br>
+        <select name="new_type" onchange="toggleNewOptions(this)">
+          <option value="text">text</option>
+          <option value="number">number</option>
+          <option value="rating">rating</option>
+          <option value="select">select</option>
+          <option value="multi_select">multi_select</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Required</label><br>
+        <select name="new_required">
+          <option value="0" selected>No</option>
+          <option value="1">Yes</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Help text (optional)</label><br>
+        <input type="text" name="new_help">
+      </div>
+
+      <div class="newOptionsBlock" style="display:none;">
+        <label>Options (one per line)</label><br>
+        <textarea name="new_options" rows="5" disabled></textarea>
+      </div>
+
+      <div style="margin-top:8px;">
+        <button type="button" onclick="this.closest('.newQRow').remove()">Remove</button>
+      </div>
+    `;
+
+    container.appendChild(row);
+  }
+
   function safeParseJson(s) {
     try {
       return JSON.parse(s);
@@ -329,6 +405,7 @@ https://youtu.be/Z1RJmh_OqeA
     }
     updateBranchBadge(qvid);
   }
+
   (function initExistingOptionBlocks() {
     const selects = document.querySelectorAll("select[data-qvid]");
     selects.forEach(s => toggleExistingOptions(s));
