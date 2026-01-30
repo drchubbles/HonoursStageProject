@@ -503,6 +503,8 @@ def editform():
         final_existing_qv_ids = []
         qv_id_map = {}
 
+        label_to_value_for_old_qvid = {}
+
         for qv_id_str in ordered_existing:
             if not qv_id_str:
                 continue
@@ -560,6 +562,16 @@ def editform():
             if not changed:
                 final_existing_qv_ids.append(qv_id)
                 qv_id_map[qv_id] = qv_id
+                if current_qv.response_type in ("select", "multi_select"):
+                    m = {}
+                    for opt in current_qv.options:
+                        lbl = (opt.option_label or "").strip()
+                        val = (opt.option_value or "").strip()
+                        if lbl:
+                            m[lbl] = val if val else lbl
+                    label_to_value_for_old_qvid[qv_id] = m
+                else:
+                    label_to_value_for_old_qvid[qv_id] = {}
                 continue
 
             max_ver = (
@@ -583,15 +595,41 @@ def editform():
             db.session.flush()
 
             if new_type in ("select", "multi_select"):
-                for idx, label in enumerate(new_options_lines):
-                    db.session.add(
-                        QuestionVersionOption(
-                            question_version_id=new_qv.question_version_id,
-                            option_value=label,
-                            option_label=label,
-                            sort_order=idx,
+                options_unchanged = (
+                    (current_qv.response_type in ("select", "multi_select"))
+                    and (current_options_lines == new_options_lines)
+                )
+
+                if options_unchanged and current_qv.response_type in ("select", "multi_select"):
+                    m = {}
+                    for opt in current_qv.options:
+                        lbl = (opt.option_label or "").strip()
+                        val = (opt.option_value or "").strip()
+                        if not lbl:
+                            continue
+                        db.session.add(
+                            QuestionVersionOption(
+                                question_version_id=new_qv.question_version_id,
+                                option_value=val if val else lbl,
+                                option_label=lbl,
+                                sort_order=int(opt.sort_order or 0),
+                            )
                         )
-                    )
+                        m[lbl] = val if val else lbl
+                    label_to_value_for_old_qvid[qv_id] = m
+                else:
+                    for idx, label in enumerate(new_options_lines):
+                        db.session.add(
+                            QuestionVersionOption(
+                                question_version_id=new_qv.question_version_id,
+                                option_value=label,
+                                option_label=label,
+                                sort_order=idx,
+                            )
+                        )
+                    label_to_value_for_old_qvid[qv_id] = {lbl: lbl for lbl in new_options_lines}
+            else:
+                label_to_value_for_old_qvid[qv_id] = {}
 
             final_existing_qv_ids.append(int(new_qv.question_version_id))
             qv_id_map[qv_id] = int(new_qv.question_version_id)
@@ -723,7 +761,8 @@ def editform():
                 if src not in all_set:
                     continue
                 pr = 0
-                for opt_val, tgt_old in pairs:
+                for opt_label, tgt_old in pairs:
+                    opt_val = label_to_value_for_old_qvid.get(src_old, {}).get(opt_label, opt_label)
                     tgt = int(qv_id_map.get(int(tgt_old), int(tgt_old)))
                     if tgt not in all_set:
                         continue
@@ -788,6 +827,20 @@ def editform():
 
     questions = _get_questions_for_version(latest_version.form_version_id)
 
+    value_to_label_by_qvid = {}
+    for q in questions:
+        qid = int(q.question_version_id)
+        if q.response_type in ("select", "multi_select"):
+            m = {}
+            for opt in q.options:
+                v = (opt.option_value or "").strip()
+                lbl = (opt.option_label or "").strip()
+                if v and lbl:
+                    m[v] = lbl
+            value_to_label_by_qvid[qid] = m
+        else:
+            value_to_label_by_qvid[qid] = {}
+
     branches = (
         FormQuestionBranching.query
         .filter(
@@ -804,9 +857,10 @@ def editform():
         cov = (b.compare_option_value or "").strip()
         if not cov:
             continue
+        lbl = value_to_label_by_qvid.get(src, {}).get(cov, cov)
         if src not in branch_maps:
             branch_maps[src] = {}
-        branch_maps[src][cov] = int(b.target_question_version_id)
+        branch_maps[src][lbl] = int(b.target_question_version_id)
 
     return render_template(
         "editform.html",

@@ -57,7 +57,8 @@ https://youtu.be/Z1RJmh_OqeA
               <option value="text" {% if q.response_type == "text" %}selected{% endif %}>text</option>
               <option value="number" {% if q.response_type == "number" %}selected{% endif %}>number</option>
               <option value="rating" {% if q.response_type == "rating" %}selected{% endif %}>rating</option>
-              <option value="select" {% if q.response_type == "select" %}selected{% endif %}>select</option>
+              <option value="select" {% if q.response_type in ("select", "multi_select") %}selected{% endif %}>select</option>
+                          <option value="multi_select" {% if q.response_type == "multi_select" %}selected{% endif %}>multi_select</option>
             </select>
           </div>
 
@@ -74,7 +75,7 @@ https://youtu.be/Z1RJmh_OqeA
             <input type="text" name="existing_help_{{ q.question_version_id }}" value="{{ q.help_text or '' }}">
           </div>
 
-          <div class="existingOptionsBlock" id="existingOptions_{{ q.question_version_id }}" {% if q.response_type != "select" %}style="display:none;"{% endif %}>
+          <div class="existingOptionsBlock" id="existingOptions_{{ q.question_version_id }}" {% if q.response_type not in ("select", "multi_select") %}style="display:none;"{% endif %}>
             <label>Options (one per line)</label><br>
             <textarea name="existing_options_{{ q.question_version_id }}" rows="5">{% if q.response_type == "select" %}{% for opt in q.options %}{{ opt.option_label }}{% if not loop.last %}{{ "\n" }}{% endif %}{% endfor %}{% endif %}</textarea>
           </div>
@@ -89,7 +90,7 @@ https://youtu.be/Z1RJmh_OqeA
             <div class="branchPanel" id="branchPanel_{{ q.question_version_id }}" data-branch='{{ (branch_maps.get(q.question_version_id) or {})|tojson }}' style="display:{% if branch_maps and (q.question_version_id in branch_maps) %}block{% else %}none{% endif %};"></div>
           </div>
 
-          <textarea name="existing_options_{{ q.question_version_id }}" class="existingOptionsHidden" id="existingOptionsHidden_{{ q.question_version_id }}" style="display:none;" rows="1" {% if q.response_type == "select" %}disabled{% endif %}></textarea>
+          <textarea name="existing_options_{{ q.question_version_id }}" class="existingOptionsHidden" id="existingOptionsHidden_{{ q.question_version_id }}" style="display:none;" rows="1" {% if q.response_type in ("select", "multi_select") %}disabled{% endif %}></textarea>
         </div>
 
         <label>
@@ -282,28 +283,39 @@ https://youtu.be/Z1RJmh_OqeA
     const stateEl = document.querySelector(`input.branchState[data-qvid="${qvid}"]`);
     const ta = block ? block.querySelector("textarea") : null;
 
-    if (sel.value === "select") {
+    const isChoiceType = (sel.value === "select" || sel.value === "multi_select");
+    const isBranchable = (sel.value === "select");
+
+    if (isChoiceType) {
       if (block) block.style.display = "block";
       if (ta) ta.disabled = false;
       if (hidden) hidden.disabled = true;
-      if (branchWrap) branchWrap.style.display = "block";
     } else {
-      if (stateEl) stateEl.value = "0";
       if (block) block.style.display = "none";
       if (ta) {
         ta.disabled = true;
         ta.value = "";
       }
       if (hidden) hidden.disabled = false;
-      if (branchToggle) branchToggle.checked = false;
-      if (branchPanel) branchPanel.style.display = "none";
-      if (branchWrap) branchWrap.style.display = "none";
-      if (branchPanel) branchPanel.innerHTML = "";
     }
+
+    if (branchWrap) {
+      branchWrap.style.display = isBranchable ? "block" : "none";
+    }
+
+    if (!isBranchable) {
+      if (stateEl) stateEl.value = "0";
+      if (branchToggle) branchToggle.checked = false;
+      if (branchPanel) {
+        branchPanel.style.display = "none";
+        branchPanel.innerHTML = "";
+      }
+    }
+
     refreshMeta();
   }
 
-  function getExistingRowsInOrder() {
+function getExistingRowsInOrder() {
     const list = document.getElementById("existingList");
     if (!list) return [];
     const rows = Array.from(list.querySelectorAll(".qrow"));
