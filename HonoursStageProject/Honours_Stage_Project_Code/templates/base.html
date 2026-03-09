@@ -38,7 +38,7 @@ This code allows for reduced redundancies in repaaring code and allows fro each 
         <div class="tabs">
           <a class="tab {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
           <a class="tab {% if request.endpoint == 'form' %}active{% endif %}" href="{{ url_for('form') }}">Form</a>
-          {% if session.get("role_name") == "admin" %}
+          {% if session.get("role_name") in ("admin", "developer") %}
             <a class="tab {% if request.endpoint == 'stats' %}active{% endif %}" href="{{ url_for('stats') }}">Stats</a>
           {% endif %}
         </div>
@@ -52,6 +52,7 @@ This code allows for reduced redundancies in repaaring code and allows fro each 
         {% endif %}
 
         {% if session.get("role_name") == "admin" %}
+          <a class="link" href="{{ url_for('manage_users') }}">Accounts</a>
           <a class="link" href="{{ url_for('branding') }}">Branding</a>
         {% endif %}
 
@@ -66,10 +67,26 @@ This code allows for reduced redundancies in repaaring code and allows fro each 
   <main>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="flash-messages">
+        <div class="flashStack">
           {% for category, message in messages %}
-            <div class="flash-message flash-{{ category }}">
-              <strong>{{ category }}</strong>: {{ message }}
+            {% set flashTitle = 'Information' %}
+            {% set flashIcon = 'i' %}
+            {% if category == 'success' %}
+              {% set flashTitle = 'Form successfully submitted' if 'form submitted' in message|lower else 'Success' %}
+              {% set flashIcon = '✓' %}
+            {% elif category == 'error' %}
+              {% set flashTitle = 'Something went wrong' %}
+              {% set flashIcon = '!' %}
+            {% elif category == 'warning' %}
+              {% set flashTitle = 'Please check this' %}
+              {% set flashIcon = '!' %}
+            {% endif %}
+            <div class="flashMessage flash{{ category|capitalize }}" role="status" aria-live="polite">
+              <div class="flashIcon" aria-hidden="true">{{ flashIcon }}</div>
+              <div class="flashBody">
+                <div class="flashTitle">{{ flashTitle }}</div>
+                <div class="flashText">{{ message }}</div>
+              </div>
             </div>
           {% endfor %}
         </div>

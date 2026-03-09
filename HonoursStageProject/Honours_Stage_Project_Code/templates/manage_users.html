@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Manage accounts{% endblock %}
+
+{% block content %}
+<h1>Manage accounts</h1>
+<p class="pageSub">Create accounts, issue first-time setup codes, and generate password reset codes.</p>
+
+{% if revealCode %}
+  <div class="card codeRevealCard">
+    <h2 class="cardTitleTight">{{ revealTitle }}</h2>
+    {% if revealMeta %}<p class="muted">{{ revealMeta }}</p>{% endif %}
+    <div class="oneTimeCode">{{ revealCode }}</div>
+    <p class="muted">This code is only shown now. Copy it and share it securely with the user.</p>
+  </div>
+{% endif %}
+
+<div class="cards">
+  <div class="card">
+    <h2 class="cardTitleTight">Create account</h2>
+    <form method="POST" action="{{ url_for('manage_users') }}" class="stackForm">
+      <input type="hidden" name="form_action" value="create_user">
+
+      <label for="display_name">Display name</label>
+      <input id="display_name" name="display_name" type="text">
+
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" required>
+
+      <label for="role_id">Role</label>
+      <select id="role_id" name="role_id" required>
+        <option value="" disabled selected>Select a role</option>
+        {% for role in roleOptions %}
+          <option value="{{ role.role_id }}">{{ role.role_name|capitalize }}</option>
+        {% endfor %}
+      </select>
+
+      <button type="submit">Create account</button>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px;">
+  <h2 class="cardTitleTight">Existing accounts</h2>
+  <div class="tableWrap">
+    <table class="dataTable">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Display name</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Recovery</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for userRow in userRows %}
+          <tr>
+            <td>{{ userRow.username }}</td>
+            <td>{{ userRow.display_name or '-' }}</td>
+            <td>{{ userRow.role.role_name|capitalize if userRow.role else '-' }}</td>
+            <td>{% if userRow.must_set_password %}Setup required{% else %}Active{% endif %}</td>
+            <td>{% if userRow.recovery_questions_set %}Configured{% else %}Not set{% endif %}</td>
+            <td>
+              <div class="inlineActions">
+                <form method="POST" action="{{ url_for('manage_users') }}">
+                  <input type="hidden" name="form_action" value="issue_setup">
+                  <input type="hidden" name="user_id" value="{{ userRow.user_id }}">
+                  <button type="submit" class="secondaryButton">Issue setup code</button>
+                </form>
+                <form method="POST" action="{{ url_for('manage_users') }}">
+                  <input type="hidden" name="form_action" value="issue_reset">
+                  <input type="hidden" name="user_id" value="{{ userRow.user_id }}">
+                  <button type="submit" class="secondaryButton">Issue reset code</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

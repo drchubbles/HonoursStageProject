@@ -99,6 +99,8 @@ https://youtu.be/Z1RJmh_OqeA
               value="{{ opt.option_value }}"
               {% if ans and opt.option_value in (ans.get('multi') or []) %}checked{% endif %}
               {% if view_only %}disabled{% endif %}
+              data-required="{% if q.is_required %}1{% else %}0{% endif %}"
+              data-prompt-text="{{ q.prompt_text|e }}"
             >
             {{ opt.option_label }}
           </label>
@@ -158,7 +160,7 @@ https://youtu.be/Z1RJmh_OqeA
       </div>
 
       {% if not view_only %}
-        <form method="POST">
+        <form method="POST" id="reviewForm" novalidate>
       {% else %}
         <div>
       {% endif %}
@@ -305,6 +307,29 @@ https://youtu.be/Z1RJmh_OqeA
     return false;
   }
 
+  function setWrapFieldsState(wrap, shouldShow) {
+    const fields = wrap.querySelectorAll("input, select, textarea");
+    fields.forEach(field => {
+      const isRequiredField = field.dataset.required === "1";
+      if (shouldShow) {
+        field.disabled = false;
+        if (isRequiredField && field.type !== "checkbox" && field.type !== "radio") {
+          field.required = true;
+        }
+      } else {
+        field.disabled = true;
+        field.required = false;
+        if (field.type === "checkbox" || field.type === "radio") {
+          field.checked = false;
+        } else if (field.tagName === "SELECT") {
+          field.selectedIndex = 0;
+        } else {
+          field.value = "";
+        }
+      }
+    });
+  }
+
   function applyBranching() {
     branchingRules.forEach(rule => {
       const wrap = document.getElementById("wrap_" + rule.target);
@@ -313,28 +338,7 @@ https://youtu.be/Z1RJmh_OqeA
       const shouldShow = evalRule(rule);
       if (rule.action === "show") {
         wrap.style.display = shouldShow ? "" : "none";
-
-        const formFields = wrap.querySelectorAll("input, select, textarea");
-        formFields.forEach(field => {
-          const isRequired = field.dataset.required === "1";
-
-          if (shouldShow) {
-            field.disabled = false;
-            if (isRequired) {
-              field.required = true;
-            }
-          } else {
-            field.disabled = true;
-            field.required = false;
-            if (field.type === "checkbox" || field.type === "radio") {
-              field.checked = false;
-            } else if (field.tagName === "SELECT") {
-              field.selectedIndex = 0;
-            } else {
-              field.value = "";
-            }
-          }
-        });
+        setWrapFieldsState(wrap, shouldShow);
       }
     });
   }
@@ -346,10 +350,79 @@ https://youtu.be/Z1RJmh_OqeA
       if (!el) return;
       el.addEventListener("change", applyBranching);
       el.addEventListener("input", applyBranching);
+      const innerFields = el.querySelectorAll ? el.querySelectorAll("input, select, textarea") : [];
+      innerFields.forEach(field => {
+        field.addEventListener("change", applyBranching);
+        field.addEventListener("input", applyBranching);
+      });
+    });
+  }
+
+  function getPromptText(field) {
+    const wrap = field.closest(".questionCard");
+    const label = wrap ? wrap.querySelector(".qLabel span") : null;
+    return (field.dataset.promptText || (label ? label.textContent : "This field") || "This field").trim();
+  }
+
+  function isFieldVisible(field) {
+    const wrap = field.closest(".questionCard");
+    if (!wrap) return true;
+    return window.getComputedStyle(wrap).display !== "none";
+  }
+
+  function validateVisibleRequiredFields() {
+    const reviewForm = document.getElementById("reviewForm");
+    if (!reviewForm) return [];
+    const missingFields = [];
+    const handledNames = new Set();
+    const fields = reviewForm.querySelectorAll("input, select, textarea");
+
+    fields.forEach(field => {
+      if (field.disabled || !isFieldVisible(field)) {
+        return;
+      }
+      if ((field.type === "checkbox" || field.type === "radio") && field.name) {
+        if (handledNames.has(field.name)) {
+          return;
+        }
+        handledNames.add(field.name);
+        const groupFields = reviewForm.querySelectorAll(`[name="${CSS.escape(field.name)}"]`);
+        const requiredGroup = Array.from(groupFields).some(item => item.dataset.required === "1" && !item.disabled && isFieldVisible(item));
+        if (!requiredGroup) {
+          return;
+        }
+        const hasChecked = Array.from(groupFields).some(item => item.checked && !item.disabled && isFieldVisible(item));
+        if (!hasChecked) {
+          missingFields.push(getPromptText(field));
+        }
+        return;
+      }
+      if (field.dataset.required !== "1") {
+        return;
+      }
+      if (String(field.value || "").trim() === "") {
+        missingFields.push(getPromptText(field));
+      }
+    });
+
+    return Array.from(new Set(missingFields));
+  }
+
+  function bindSubmitValidation() {
+    const reviewForm = document.getElementById("reviewForm");
+    if (!reviewForm) return;
+    reviewForm.addEventListener("submit", function(event) {
+      applyBranching();
+      const missingFields = validateVisibleRequiredFields();
+      if (missingFields.length) {
+        event.preventDefault();
+        alert("Please complete the following required fields:\n\n" + missingFields.join("\n"));
+      }
     });
   }
 
   async function loadBranching() {
+    bindSubmitValidation();
     if (!formVersionId) return;
     const resp = await fetch(`/api/branching/${formVersionId}`);
     if (!resp.ok) return;

@@ -1,17 +1,16 @@
-<!-- 
-Coding Credits:
-
-For the purposes of acknowledgement, this HTML structure was inspired by the following tutorial:
-https://youtu.be/Z1RJmh_OqeA
--->
-
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-
-
 <h1>Completed Forms</h1>
+
+{% if session.get("role_name") == "admin" %}
+  <div class="card" style="margin-bottom:18px;">
+    <h2 class="cardTitleTight">Admin tools</h2>
+    <p class="muted">Create accounts and issue one-time setup or reset codes.</p>
+    <a class="btn" href="{{ url_for('manage_users') }}">Manage accounts</a>
+  </div>
+{% endif %}
 
 {% if submissions and submissions|length > 0 %}
   <div class="cards">

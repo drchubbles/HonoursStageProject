@@ -1,32 +1,27 @@
-<!-- 
-Coding Credits:
-
-For the purposes of acknowledgement, this HTML structure was inspired by the following tutorial:
-https://youtu.be/Z1RJmh_OqeA
--->
-
 {% extends "base.html" %}
 {% block title %}Sign in{% endblock %}
 {% block navbar %}{% endblock %}
 
 {% block content %}
-<h1>Sign in</h1>
+<div class="authShell">
+  <div class="authCard">
+    <h1>Sign in</h1>
+    <p class="pageSub">Use your username and password to access the review system.</p>
 
-<form method="POST" action="{{ url_for('index') }}">
-  <label for="username">Username</label><br>
-  <input id="username" name="username" type="text" autocomplete="username" required
-         style="width:100%; padding:10px; margin:6px 0 12px;"><br>
+    <form method="POST" action="{{ url_for('index') }}" class="stackForm">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username" required>
 
-  <label for="password">Password</label><br>
-  <input id="password" name="password" type="password" autocomplete="current-password" required
-         style="width:100%; padding:10px; margin:6px 0 16px;"><br>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
 
-  <button type="submit" style="padding:10px 14px;">Sign in</button>
-</form>
+      <button type="submit">Sign in</button>
+    </form>
 
-<p style="margin-top:16px;">
-  <a href="{{ url_for('signup') }}">Create an account</a>
-  &nbsp;|&nbsp;
-  <a href="{{ url_for('reset_password') }}">Forgot password?</a>
-</p>
+    <div class="authLinks">
+      <a href="{{ url_for('set_password') }}">Set password with a one-time code</a>
+      <a href="{{ url_for('reset_password') }}">Reset password with a one-time code</a>
+    </div>
+  </div>
+</div>
 {% endblock %}

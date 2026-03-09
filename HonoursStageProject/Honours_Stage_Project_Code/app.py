@@ -4,8 +4,14 @@ from __future__ import annotations
 import os
 import uuid
 import json
+import re
+import secrets
+import random
+import hashlib
+from collections import Counter, defaultdict
 from functools import wraps
 from decimal import Decimal
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -15,14 +21,109 @@ from config import Config
 app = Flask(__name__)
 
 
+securityQuestions = [
+    {"key": "firstSchool", "text": "What was the name of your first school?"},
+    {"key": "childhoodStreet", "text": "What was the name of the street you grew up on?"},
+    {"key": "firstPet", "text": "What was the name of your first pet?"},
+    {"key": "favouriteTeacher", "text": "What was the surname of your favourite teacher?"},
+    {"key": "firstTown", "text": "What town or city were you born in?"},
+    {"key": "childhoodFriend", "text": "What was the first name of your childhood best friend?"},
+    {"key": "firstHoliday", "text": "What was the first holiday destination you remember?"},
+    {"key": "favouriteBook", "text": "What was your favourite book as a child?"},
+    {"key": "firstJob", "text": "What was the name of your first workplace?"},
+    {"key": "favouriteFood", "text": "What was your favourite food as a child?"},
+]
+
+
+def normalizeRoleName(value):
+    return (str(value or "").strip().lower())
+
+
+def normalizeCredentialText(value):
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def normalizeSecurityAnswer(value):
+    return normalizeCredentialText(value).lower()
+
+
+def buildOneTimeCode():
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "-".join("".join(secrets.choice(alphabet) for _ in range(5)) for _ in range(4))
+
+
+def createPlaceholderPasswordHash():
+    return generate_password_hash(secrets.token_urlsafe(32))
+
+
+def getSecurityQuestionMap():
+    return {item["key"]: item["text"] for item in securityQuestions}
+
+
+def passwordMeetsRules(passwordText):
+    return len(passwordText or "") >= 8
+
+
+def issueUserToken(userId, tokenType, minutesValid, createdByAdminId=None):
+    rawCode = buildOneTimeCode()
+    expiresAt = datetime.utcnow() + timedelta(minutes=int(minutesValid))
+    UserSetupToken.query.filter(
+        UserSetupToken.user_id == userId,
+        UserSetupToken.token_type == tokenType,
+        UserSetupToken.used_at.is_(None),
+    ).update({"used_at": datetime.utcnow()}, synchronize_session=False)
+    db.session.add(UserSetupToken(
+        user_id=userId,
+        token_type=tokenType,
+        token_hash=generate_password_hash(rawCode),
+        expires_at=expiresAt,
+        created_by_admin_id=createdByAdminId,
+    ))
+    return rawCode, expiresAt
+
+
+def getValidUserToken(userObj, rawCode, tokenType):
+    if not userObj or not rawCode:
+        return None
+    tokenRows = (
+        UserSetupToken.query
+        .filter(
+            UserSetupToken.user_id == userObj.user_id,
+            UserSetupToken.token_type == tokenType,
+            UserSetupToken.used_at.is_(None),
+        )
+        .order_by(UserSetupToken.created_at.desc(), UserSetupToken.token_id.desc())
+        .all()
+    )
+    nowValue = datetime.utcnow()
+    rawDigest = hashlib.sha256(rawCode.encode("utf-8")).hexdigest()
+    for tokenRow in tokenRows:
+        if tokenRow.expires_at and tokenRow.expires_at < nowValue:
+            continue
+        storedHash = str(tokenRow.token_hash or "")
+        if storedHash == rawDigest or check_password_hash(storedHash, rawCode):
+            return tokenRow
+    return None
+
+
+def clearPendingResetSession():
+    for key in ("pendingResetUserId", "pendingResetTokenId", "pendingResetQuestionIds"):
+        session.pop(key, None)
+
+
 def ensureBrandingState():
     uploadLogoFolder = app.config.get("UPLOAD_LOGO_FOLDER")
     if not uploadLogoFolder:
         uploadLogoFolder = os.path.join(app.root_path, "static", "uploads", "logos")
     if uploadLogoFolder:
         os.makedirs(uploadLogoFolder, exist_ok=True)
-    brandingStateFilename = app.config.get("BRANDING_STATE_FILENAME", "siteBranding.json")
-    brandingStatePath = os.path.join(uploadLogoFolder, brandingStateFilename)
+    brandingStatePath = app.config.get("BRANDING_STATE_PATH")
+    if not brandingStatePath:
+        brandingStateFilename = app.config.get("BRANDING_STATE_FILENAME", "siteBranding.json")
+        brandingStatePath = os.path.join(app.root_path, "branding", brandingStateFilename)
+    brandingStateFolder = os.path.dirname(brandingStatePath)
+    if brandingStateFolder:
+        os.makedirs(brandingStateFolder, exist_ok=True)
     if not os.path.exists(brandingStatePath):
         with open(brandingStatePath, "w", encoding="utf-8") as f:
             f.write(json.dumps({"logoFilename": None}, indent=2))
@@ -44,6 +145,125 @@ def allowedLogo(filename: str) -> bool:
     ext = filename.rsplit(".", 1)[1].lower()
     allowed = app.config.get("ALLOWED_LOGO_EXTENSIONS", set())
     return ext in allowed
+
+
+def ensureStatsState():
+    statsStatePath = app.config.get("STATS_STATE_PATH")
+    if not statsStatePath:
+        statsStatePath = os.path.join(app.root_path, "statsConfig.json")
+    statsStateFolder = os.path.dirname(statsStatePath)
+    if statsStateFolder:
+        os.makedirs(statsStateFolder, exist_ok=True)
+    if not os.path.exists(statsStatePath):
+        with open(statsStatePath, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"trackedQuestionKeys": [], "trackedQuestionVersionIds": []}, indent=2))
+    return statsStatePath
+
+
+def getStatsState():
+    statsStatePath = ensureStatsState()
+    with open(statsStatePath, "r", encoding="utf-8") as f:
+        try:
+            state = json.load(f)
+        except json.JSONDecodeError:
+            state = {"trackedQuestionKeys": [], "trackedQuestionVersionIds": []}
+    if "trackedQuestionVersionIds" not in state or not isinstance(state.get("trackedQuestionVersionIds"), list):
+        state["trackedQuestionVersionIds"] = []
+    if "trackedQuestionKeys" not in state or not isinstance(state.get("trackedQuestionKeys"), list):
+        state["trackedQuestionKeys"] = []
+    return state
+
+
+def setStatsState(trackedQuestionKeys, trackedQuestionVersionIds=None):
+    statsStatePath = ensureStatsState()
+    cleanIds = []
+    for value in trackedQuestionVersionIds or []:
+        try:
+            cleanIds.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    cleanKeys = []
+    for value in trackedQuestionKeys or []:
+        valueText = str(value).strip()
+        if valueText != "":
+            cleanKeys.append(valueText)
+    with open(statsStatePath, "w", encoding="utf-8") as f:
+        f.write(json.dumps({"trackedQuestionKeys": cleanKeys, "trackedQuestionVersionIds": cleanIds}, indent=2))
+
+
+def stats_required(view_func):
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("index"))
+        if session.get("role_name") not in ("admin", "developer"):
+            flash("Stats access requires admin or developer permissions.", "error")
+            return redirect(url_for("dashboard"))
+        return view_func(*args, **kwargs)
+    return wrapper
+
+
+def normalizeStatsText(value):
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def normalizeStatsKey(value):
+    return normalizeStatsText(value).lower()
+
+
+def promptLooksLike(promptText, keywords):
+    promptKey = normalizeStatsKey(promptText)
+    return any(keyword in promptKey for keyword in keywords)
+
+
+def isIdentityPrompt(promptText):
+    promptKey = normalizeStatsKey(promptText)
+    identityKeywords = [
+        "email",
+        "log number",
+        "name",
+        "supervisor",
+        "team",
+        "comments",
+        "feedback",
+        "greeting",
+    ]
+    if "staff member" in promptKey or "member of staff" in promptKey:
+        return True
+    return any(keyword in promptKey for keyword in identityKeywords)
+
+
+def answerLooksLikeIssue(promptText, answerLabel):
+    promptKey = normalizeStatsKey(promptText)
+    answerKey = normalizeStatsKey(answerLabel)
+    if not answerKey:
+        return False
+    negativeValues = {"no", "incorrect", "not correct", "false", "failed", "fail", "poor", "late", "missed"}
+    positiveValues = {"yes", "correct", "true", "passed", "pass", "good", "compliant"}
+    if any(keyword in promptKey for keyword in ["correct", "compliant", "right", "accurate"]):
+        return answerKey in negativeValues
+    if any(keyword in promptKey for keyword in ["missed", "error", "issue", "problem", "negated", "required feedback", "breach", "concern"]):
+        return answerKey in positiveValues or answerKey not in {"n/a", "na", "none", "not applicable"}
+    return answerKey not in {"n/a", "na", "none", "not applicable", "unknown"}
+
+
+def monthKeyFromDate(value):
+    if not value:
+        return None
+    return value.strftime("%Y-%m")
+
+
+def monthLabelFromKey(value):
+    try:
+        return datetime.strptime(value, "%Y-%m").strftime("%b %Y")
+    except ValueError:
+        return value
+
+
+def buildIssueSummary(issues):
+    if not issues:
+        return "None recorded"
+    return issues[0][0]
 
 app.config.from_object(Config)
 
@@ -74,9 +294,14 @@ class User(db.Model):
 
     user_id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     username = db.Column(db.String(64), unique=True, nullable=False)
+    display_name = db.Column(db.String(120), nullable=True)
     password_hash = db.Column(db.String(255), nullable=False)
     role_id = db.Column(db.SmallInteger, db.ForeignKey("roles.role_id"), nullable=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    must_set_password = db.Column(db.Boolean, nullable=False, default=False)
+    recovery_questions_set = db.Column(db.Boolean, nullable=False, default=False)
+    password_changed_at = db.Column(db.DateTime, nullable=True)
+    session_version = db.Column(db.Integer, nullable=False, default=1)
 
     role = db.relationship("Role")
 
@@ -210,11 +435,49 @@ class SubmissionAnswer(db.Model):
     answer_option_value = db.Column(db.String(128), nullable=True)
 
 
+class UserSetupToken(db.Model):
+    __tablename__ = "user_setup_tokens"
+
+    token_id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.BigInteger, db.ForeignKey("users.user_id"), nullable=False)
+    token_type = db.Column(db.String(16), nullable=False)
+    token_hash = db.Column(db.String(255), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    created_by_admin_id = db.Column(db.BigInteger, db.ForeignKey("users.user_id"), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.current_timestamp())
+
+
+class UserSecurityQuestion(db.Model):
+    __tablename__ = "user_security_questions"
+
+    security_question_id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.BigInteger, db.ForeignKey("users.user_id"), nullable=False)
+    question_key = db.Column(db.String(64), nullable=False)
+    question_text = db.Column(db.String(255), nullable=False)
+    answer_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.current_timestamp())
+
+
 def login_required(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
-        if not session.get("user_id"):
+        userId = session.get("user_id")
+        if not userId:
             return redirect(url_for("index"))
+        userObj = User.query.filter_by(user_id=int(userId)).first()
+        if not userObj or not userObj.is_active:
+            session.clear()
+            return redirect(url_for("index"))
+        if int(session.get("session_version") or 0) != int(userObj.session_version or 1):
+            session.clear()
+            flash("Please sign in again.", "info")
+            return redirect(url_for("index"))
+        if userObj.must_set_password:
+            session.clear()
+            flash("Account setup is required before you can sign in.", "warning")
+            return redirect(url_for("set_password"))
+        session["role_name"] = normalizeRoleName(userObj.role.role_name if userObj.role else None)
         return view_func(*args, **kwargs)
     return wrapper
 
@@ -246,8 +509,17 @@ def editor_required(view_func):
 @app.context_processor
 def injectBranding():
     brandingState = getBrandingState()
-    logoFilename = brandingState.get("logoFilename") or app.config.get("DEFAULT_LOGO_FILENAME")
-    siteLogoUrl = url_for("static", filename=f"uploads/logos/{logoFilename}")
+    logoFilename = brandingState.get("logoFilename")
+    uploadLogoFolder = app.config.get("UPLOAD_LOGO_FOLDER") or os.path.join(app.root_path, "static", "uploads", "logos")
+    defaultLogoFilename = app.config.get("DEFAULT_LOGO_FILENAME")
+    logoExists = False
+    if logoFilename:
+        logoPath = os.path.join(uploadLogoFolder, logoFilename)
+        logoExists = os.path.exists(logoPath)
+    if logoFilename and logoExists:
+        siteLogoUrl = url_for("static", filename=f"uploads/logos/{logoFilename}")
+    else:
+        siteLogoUrl = url_for("static", filename=f"branding/{defaultLogoFilename}")
     themeBackgroundColor = app.config.get("THEME_BACKGROUND_COLOR")
     themeButtonColor = app.config.get("THEME_BUTTON_COLOR")
     themeButtonTextColor = app.config.get("THEME_BUTTON_TEXT_COLOR")
@@ -285,10 +557,114 @@ def branding():
 
 
 
+def ensureDatabaseSchema():
+    dbName = db.engine.url.database
+    if not dbName:
+        return
+
+    def columnExists(tableName, columnName):
+        row = db.session.execute(db.text(
+            "SELECT 1 FROM information_schema.columns WHERE table_schema = :schemaName AND table_name = :tableName AND column_name = :columnName LIMIT 1"
+        ), {"schemaName": dbName, "tableName": tableName, "columnName": columnName}).fetchone()
+        return row is not None
+
+    def tableExists(tableName):
+        row = db.session.execute(db.text(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = :schemaName AND table_name = :tableName LIMIT 1"
+        ), {"schemaName": dbName, "tableName": tableName}).fetchone()
+        return row is not None
+
+    usersAlter = [
+        ("display_name", "ALTER TABLE users ADD COLUMN display_name VARCHAR(120) NULL AFTER username"),
+        ("must_set_password", "ALTER TABLE users ADD COLUMN must_set_password TINYINT(1) NOT NULL DEFAULT 0 AFTER is_active"),
+        ("recovery_questions_set", "ALTER TABLE users ADD COLUMN recovery_questions_set TINYINT(1) NOT NULL DEFAULT 0 AFTER must_set_password"),
+        ("password_changed_at", "ALTER TABLE users ADD COLUMN password_changed_at DATETIME NULL AFTER recovery_questions_set"),
+        ("session_version", "ALTER TABLE users ADD COLUMN session_version INT NOT NULL DEFAULT 1 AFTER password_changed_at"),
+    ]
+    for columnName, statement in usersAlter:
+        if not columnExists("users", columnName):
+            db.session.execute(db.text(statement))
+
+    formVersionsAlter = [
+        ("title", "ALTER TABLE form_versions ADD COLUMN title VARCHAR(255) NULL AFTER version_number"),
+        ("description", "ALTER TABLE form_versions ADD COLUMN description TEXT NULL AFTER title"),
+        ("notes", "ALTER TABLE form_versions ADD COLUMN notes VARCHAR(255) NULL AFTER created_by"),
+    ]
+    for columnName, statement in formVersionsAlter:
+        if tableExists("form_versions") and not columnExists("form_versions", columnName):
+            db.session.execute(db.text(statement))
+
+    questionVersionsAlter = [
+        ("hint_text", "ALTER TABLE question_versions ADD COLUMN hint_text TEXT NULL AFTER is_required"),
+        ("question_description", "ALTER TABLE question_versions ADD COLUMN question_description TEXT NULL AFTER hint_text"),
+        ("is_locked", "ALTER TABLE question_versions ADD COLUMN is_locked TINYINT(1) NOT NULL DEFAULT 0 AFTER question_description"),
+        ("help_text", "ALTER TABLE question_versions ADD COLUMN help_text TEXT NULL AFTER is_locked"),
+        ("is_active", "ALTER TABLE question_versions ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER help_text"),
+    ]
+    for columnName, statement in questionVersionsAlter:
+        if tableExists("question_versions") and not columnExists("question_versions", columnName):
+            db.session.execute(db.text(statement))
+
+    if tableExists("form_version_questions") and not columnExists("form_version_questions", "section_id"):
+        db.session.execute(db.text("ALTER TABLE form_version_questions ADD COLUMN section_id BIGINT UNSIGNED NULL AFTER question_version_id"))
+
+    if not tableExists("form_version_sections"):
+        db.session.execute(db.text("""
+            CREATE TABLE form_version_sections (
+              section_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+              form_version_id BIGINT UNSIGNED NOT NULL,
+              title VARCHAR(255) NOT NULL,
+              description TEXT NULL,
+              sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+              PRIMARY KEY (section_id),
+              KEY idx_form_version_sections_form_version (form_version_id, sort_order),
+              CONSTRAINT fk_form_version_sections_form_version FOREIGN KEY (form_version_id) REFERENCES form_versions(form_version_id) ON DELETE CASCADE ON UPDATE RESTRICT
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """))
+
+    if not tableExists("user_setup_tokens"):
+        db.session.execute(db.text("""
+            CREATE TABLE user_setup_tokens (
+              token_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+              user_id BIGINT UNSIGNED NOT NULL,
+              token_type VARCHAR(16) NOT NULL,
+              token_hash VARCHAR(255) NOT NULL,
+              expires_at DATETIME NOT NULL,
+              used_at DATETIME NULL,
+              created_by_admin_id BIGINT UNSIGNED NULL,
+              created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (token_id),
+              KEY idx_user_setup_tokens_user (user_id, token_type, used_at),
+              KEY idx_user_setup_tokens_expires (expires_at),
+              CONSTRAINT fk_user_setup_tokens_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE ON UPDATE RESTRICT,
+              CONSTRAINT fk_user_setup_tokens_admin FOREIGN KEY (created_by_admin_id) REFERENCES users(user_id) ON DELETE SET NULL ON UPDATE RESTRICT
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """))
+
+    if not tableExists("user_security_questions"):
+        db.session.execute(db.text("""
+            CREATE TABLE user_security_questions (
+              security_question_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+              user_id BIGINT UNSIGNED NOT NULL,
+              question_key VARCHAR(64) NOT NULL,
+              question_text VARCHAR(255) NOT NULL,
+              answer_hash VARCHAR(255) NOT NULL,
+              created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (security_question_id),
+              UNIQUE KEY uq_user_security_question (user_id, question_key),
+              KEY idx_user_security_questions_user (user_id),
+              CONSTRAINT fk_user_security_questions_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE ON UPDATE RESTRICT
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """))
+
+    db.session.commit()
+
+
 def seed_roles_if_missing():
-    for role_name in ("admin", "standard", "developer"):
-        if not Role.query.filter_by(role_name=role_name).first():
-            db.session.add(Role(role_name=role_name))
+    existingRoles = {normalizeRoleName(role.role_name): role for role in Role.query.all()}
+    for roleName in ("admin", "standard", "developer"):
+        if roleName not in existingRoles:
+            db.session.add(Role(role_name=roleName))
     db.session.commit()
 
 
@@ -296,6 +672,7 @@ def seed_roles_if_missing():
 def _ensure_db_ready():
     if not app.config.get("_SEEDED_ROLES"):
         db.session.execute(db.text("SELECT 1"))
+        ensureDatabaseSchema()
         seed_roles_if_missing()
         app.config["_SEEDED_ROLES"] = True
 
@@ -394,17 +771,22 @@ def api_branching(form_version_id: int):
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
-        username = (request.form.get("username") or "").strip()
+        username = normalizeCredentialText(request.form.get("username") or "")
         password = request.form.get("password") or ""
 
         user = User.query.filter_by(username=username).first()
+        if user and user.is_active and user.must_set_password:
+            flash("This account still needs first-time setup. Use your one-time setup code on the Set password page.", "warning")
+            return redirect(url_for("set_password", username=username))
         if not user or not user.is_active or not check_password_hash(user.password_hash, password):
             flash("Invalid username or password.", "error")
             return render_template("index.html"), 401
 
+        session.clear()
         session["user_id"] = int(user.user_id)
         session["username"] = user.username
-        session["role_name"] = user.role.role_name if user.role else None
+        session["role_name"] = normalizeRoleName(user.role.role_name if user.role else None)
+        session["session_version"] = int(user.session_version or 1)
         return redirect(url_for("dashboard"))
 
     return render_template("index.html")
@@ -412,74 +794,227 @@ def index():
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
-    roles = Role.query.all()
+    flash("Accounts can only be created by an admin.", "warning")
+    return redirect(url_for("index"))
 
+
+@app.route("/set-password", methods=["GET", "POST"])
+def set_password():
+    questionMap = getSecurityQuestionMap()
     if request.method == "POST":
-        username = (request.form.get("username") or "").strip()
-        password = request.form.get("password") or ""
-        confirm = request.form.get("confirm_password") or ""
-        role_id = request.form.get("role_id")
+        username = normalizeCredentialText(request.form.get("username") or "")
+        setupCode = normalizeCredentialText(request.form.get("setup_code") or "")
+        newPassword = request.form.get("new_password") or ""
+        confirmPassword = request.form.get("confirm_new_password") or ""
+        selectedKeys = request.form.getlist("question_key")
+        answerValues = request.form.getlist("question_answer")
 
-        if not username or len(username) > 64:
-            flash("Invalid username.", "error")
-            return render_template("signup.html", roles=roles), 400
+        user = User.query.filter_by(username=username).first()
+        if not user or not user.is_active:
+            flash("User not found.", "error")
+            return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=username), 404
+        tokenRow = getValidUserToken(user, setupCode, "setup")
+        if not tokenRow:
+            flash("Invalid or expired setup code.", "error")
+            return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=username), 400
+        if not passwordMeetsRules(newPassword) or newPassword != confirmPassword:
+            flash("Password must be at least 8 characters and both password fields must match.", "error")
+            return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=username), 400
+        if len(selectedKeys) != 5 or len(answerValues) != 5:
+            flash("Please choose and answer all 5 security questions.", "error")
+            return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=username), 400
+        cleanKeys = [normalizeCredentialText(value) for value in selectedKeys]
+        if len(set(cleanKeys)) != 5 or any(key not in questionMap for key in cleanKeys):
+            flash("Please choose 5 different security questions.", "error")
+            return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=username), 400
+        cleanAnswers = [normalizeSecurityAnswer(value) for value in answerValues]
+        if any(not value for value in cleanAnswers):
+            flash("Please answer all 5 security questions.", "error")
+            return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=username), 400
 
-        if password != confirm or len(password) < 8:
-            flash("Invalid password.", "error")
-            return render_template("signup.html", roles=roles), 400
+        UserSecurityQuestion.query.filter_by(user_id=user.user_id).delete()
+        for questionKey, answerValue in zip(cleanKeys, cleanAnswers):
+            db.session.add(UserSecurityQuestion(
+                user_id=user.user_id,
+                question_key=questionKey,
+                question_text=questionMap[questionKey],
+                answer_hash=generate_password_hash(answerValue),
+            ))
 
-        if not role_id:
-            flash("Role selection required.", "error")
-            return render_template("signup.html", roles=roles), 400
-
-        if User.query.filter_by(username=username).first():
-            flash("Username already exists.", "error")
-            return render_template("signup.html", roles=roles), 409
-
-        user = User(
-            username=username,
-            password_hash=generate_password_hash(password),
-            role_id=int(role_id),
-            is_active=True,
-        )
-        db.session.add(user)
+        user.password_hash = generate_password_hash(newPassword)
+        user.must_set_password = False
+        user.recovery_questions_set = True
+        user.password_changed_at = datetime.utcnow()
+        user.session_version = int(user.session_version or 1) + 1
+        tokenRow.used_at = datetime.utcnow()
         db.session.commit()
 
-        flash("Account created.", "success")
+        flash("Password set successfully. You can now sign in.", "success")
         return redirect(url_for("index"))
 
-    return render_template("signup.html", roles=roles)
+    presetUsername = normalizeCredentialText(request.args.get("username") or "")
+    return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=presetUsername)
 
 
 @app.route("/reset-password", methods=["GET", "POST"])
 def reset_password():
+    questionRows = []
+    pendingUserId = session.get("pendingResetUserId")
+    pendingQuestionIds = session.get("pendingResetQuestionIds") or []
+    if pendingUserId and pendingQuestionIds:
+        questionRows = UserSecurityQuestion.query.filter(
+            UserSecurityQuestion.user_id == int(pendingUserId),
+            UserSecurityQuestion.security_question_id.in_([int(value) for value in pendingQuestionIds]),
+        ).order_by(UserSecurityQuestion.security_question_id.asc()).all()
+
     if request.method == "POST":
-        username = (request.form.get("username") or "").strip()
-        new_password = request.form.get("new_password") or ""
-        confirm = request.form.get("confirm_new_password") or ""
+        formStep = request.form.get("form_step") or "verify"
+        if formStep == "verify":
+            clearPendingResetSession()
+            username = normalizeCredentialText(request.form.get("username") or "")
+            resetCode = normalizeCredentialText(request.form.get("reset_code") or "")
+            user = User.query.filter_by(username=username).first()
+            if not user or not user.is_active or not user.recovery_questions_set:
+                flash("Invalid reset details.", "error")
+                return render_template("reset_password.html"), 400
+            tokenRow = getValidUserToken(user, resetCode, "reset")
+            if not tokenRow:
+                flash("Invalid or expired reset code.", "error")
+                return render_template("reset_password.html"), 400
+            availableQuestions = UserSecurityQuestion.query.filter_by(user_id=user.user_id).all()
+            if len(availableQuestions) < 2:
+                flash("This account does not have enough recovery questions configured.", "error")
+                return render_template("reset_password.html"), 400
+            chosenQuestions = random.sample(availableQuestions, 2)
+            session["pendingResetUserId"] = int(user.user_id)
+            session["pendingResetTokenId"] = int(tokenRow.token_id)
+            session["pendingResetQuestionIds"] = [int(item.security_question_id) for item in chosenQuestions]
+            return render_template("reset_password.html", resetQuestions=chosenQuestions, presetUsername=username, questionStep=True)
 
-        if new_password != confirm or len(new_password) < 8:
-            flash("Invalid password.", "error")
-            return render_template("reset_password.html"), 400
+        if formStep == "complete":
+            pendingUserId = session.get("pendingResetUserId")
+            pendingTokenId = session.get("pendingResetTokenId")
+            pendingQuestionIds = session.get("pendingResetQuestionIds") or []
+            username = normalizeCredentialText(request.form.get("username") or "")
+            newPassword = request.form.get("new_password") or ""
+            confirmPassword = request.form.get("confirm_new_password") or ""
+            if not pendingUserId or not pendingTokenId or len(pendingQuestionIds) != 2:
+                flash("Your reset session has expired. Please start again.", "error")
+                clearPendingResetSession()
+                return redirect(url_for("reset_password"))
+            user = User.query.filter_by(user_id=int(pendingUserId), username=username).first()
+            tokenRow = UserSetupToken.query.filter_by(token_id=int(pendingTokenId), token_type="reset", user_id=int(pendingUserId)).first()
+            questionRows = UserSecurityQuestion.query.filter(
+                UserSecurityQuestion.user_id == int(pendingUserId),
+                UserSecurityQuestion.security_question_id.in_([int(value) for value in pendingQuestionIds]),
+            ).order_by(UserSecurityQuestion.security_question_id.asc()).all()
+            if not user or not tokenRow or tokenRow.used_at is not None or tokenRow.expires_at < datetime.utcnow() or len(questionRows) != 2:
+                flash("Your reset session has expired. Please start again.", "error")
+                clearPendingResetSession()
+                return redirect(url_for("reset_password"))
+            if not passwordMeetsRules(newPassword) or newPassword != confirmPassword:
+                flash("Password must be at least 8 characters and both password fields must match.", "error")
+                return render_template("reset_password.html", resetQuestions=questionRows, presetUsername=username, questionStep=True), 400
+            answerOne = normalizeSecurityAnswer(request.form.get(f"question_answer_{questionRows[0].security_question_id}") or "")
+            answerTwo = normalizeSecurityAnswer(request.form.get(f"question_answer_{questionRows[1].security_question_id}") or "")
+            if not check_password_hash(questionRows[0].answer_hash, answerOne) or not check_password_hash(questionRows[1].answer_hash, answerTwo):
+                flash("Your recovery answers were not correct.", "error")
+                return render_template("reset_password.html", resetQuestions=questionRows, presetUsername=username, questionStep=True), 400
+            user.password_hash = generate_password_hash(newPassword)
+            user.must_set_password = False
+            user.password_changed_at = datetime.utcnow()
+            user.session_version = int(user.session_version or 1) + 1
+            tokenRow.used_at = datetime.utcnow()
+            db.session.commit()
+            clearPendingResetSession()
+            flash("Password reset successfully. You can now sign in.", "success")
+            return redirect(url_for("index"))
 
-        user = User.query.filter_by(username=username).first()
-        if not user:
-            flash("User not found.", "error")
-            return render_template("reset_password.html"), 404
+    return render_template("reset_password.html", resetQuestions=questionRows, questionStep=bool(questionRows), presetUsername="")
 
-        user.password_hash = generate_password_hash(new_password)
-        db.session.commit()
 
-        flash("Password updated.", "success")
-        return redirect(url_for("index"))
+@app.route("/admin/users", methods=["GET", "POST"])
+@admin_required
+def manage_users():
+    adminId = int(session.get("user_id"))
+    revealCode = None
+    revealTitle = None
+    revealMeta = None
 
-    return render_template("reset_password.html")
+    if request.method == "POST":
+        formAction = request.form.get("form_action") or ""
+        if formAction == "create_user":
+            username = normalizeCredentialText(request.form.get("username") or "")
+            displayName = normalizeCredentialText(request.form.get("display_name") or "")
+            roleIdRaw = request.form.get("role_id") or ""
+            roleObj = Role.query.filter_by(role_id=int(roleIdRaw)).first() if str(roleIdRaw).isdigit() else None
+            if not username or len(username) > 64:
+                flash("Please enter a valid username.", "error")
+                return redirect(url_for("manage_users"))
+            if not roleObj:
+                flash("Please choose an account role.", "error")
+                return redirect(url_for("manage_users"))
+            if User.query.filter_by(username=username).first():
+                flash("That username already exists.", "error")
+                return redirect(url_for("manage_users"))
+            userObj = User(
+                username=username,
+                display_name=displayName or None,
+                password_hash=createPlaceholderPasswordHash(),
+                role_id=int(roleObj.role_id),
+                is_active=True,
+                must_set_password=True,
+                recovery_questions_set=False,
+                session_version=1,
+            )
+            db.session.add(userObj)
+            db.session.flush()
+            rawCode, expiresAt = issueUserToken(userObj.user_id, "setup", 24 * 60, adminId)
+            db.session.commit()
+            revealCode = rawCode
+            revealTitle = f"One-time setup code for {username}"
+            revealMeta = f"Expires: {expiresAt.strftime('%d %b %Y %H:%M UTC')}"
+            flash("Account created. Give the one-time setup code to the user securely.", "success")
+
+        elif formAction == "issue_reset":
+            userIdRaw = request.form.get("user_id") or ""
+            userObj = User.query.filter_by(user_id=int(userIdRaw)).first() if str(userIdRaw).isdigit() else None
+            if not userObj or not userObj.is_active:
+                flash("User not found.", "error")
+                return redirect(url_for("manage_users"))
+            if userObj.must_set_password or not userObj.recovery_questions_set:
+                flash("That account has not completed first-time setup yet, so issue a new setup code instead.", "warning")
+                return redirect(url_for("manage_users"))
+            rawCode, expiresAt = issueUserToken(userObj.user_id, "reset", 30, adminId)
+            db.session.commit()
+            revealCode = rawCode
+            revealTitle = f"One-time reset code for {userObj.username}"
+            revealMeta = f"Expires: {expiresAt.strftime('%d %b %Y %H:%M UTC')}"
+            flash("Reset code created. Give it to the user securely.", "success")
+
+        elif formAction == "issue_setup":
+            userIdRaw = request.form.get("user_id") or ""
+            userObj = User.query.filter_by(user_id=int(userIdRaw)).first() if str(userIdRaw).isdigit() else None
+            if not userObj or not userObj.is_active:
+                flash("User not found.", "error")
+                return redirect(url_for("manage_users"))
+            rawCode, expiresAt = issueUserToken(userObj.user_id, "setup", 24 * 60, adminId)
+            userObj.must_set_password = True
+            db.session.commit()
+            revealCode = rawCode
+            revealTitle = f"One-time setup code for {userObj.username}"
+            revealMeta = f"Expires: {expiresAt.strftime('%d %b %Y %H:%M UTC')}"
+            flash("A fresh setup code has been created.", "success")
+
+    roleOptions = Role.query.order_by(Role.role_name.asc()).all()
+    userRows = User.query.join(Role, Role.role_id == User.role_id).order_by(User.username.asc()).all()
+    return render_template("manage_users.html", roleOptions=roleOptions, userRows=userRows, revealCode=revealCode, revealTitle=revealTitle, revealMeta=revealMeta)
 
 
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    is_admin = session.get("role_name") == "admin"
+    is_admin = normalizeRoleName(session.get("role_name")) == "admin"
     user_id = int(session.get("user_id"))
 
     q = (
@@ -500,7 +1035,7 @@ def dashboard():
 @app.route("/submission/<int:submission_id>")
 @login_required
 def view_submission(submission_id: int):
-    is_admin = session.get("role_name") == "admin"
+    is_admin = normalizeRoleName(session.get("role_name")) == "admin"
     user_id = int(session.get("user_id"))
 
     submission = FormSubmission.query.filter_by(submission_id=submission_id).first()
@@ -1122,11 +1657,376 @@ def editform():
     )
 
 
-@app.route("/stats")
-@login_required
+@app.route("/stats", methods=["GET", "POST"])
+@stats_required
 def stats():
-    return render_template("stats.html")
+    formObj = Form.query.filter_by(is_active=True).order_by(Form.form_id.desc()).first()
+    if not formObj:
+        return render_template(
+            "stats.html",
+            statsReady=False,
+            canEditStats=(session.get("role_name") in ("admin", "developer")),
+            isDeveloper=(session.get("role_name") == "developer"),
+            trackedQuestionKeys=[],
+            candidateQuestions=[],
+            versionFilters=[],
+            selectedFormVersionIds=[],
+        )
 
+    formVersions = (
+        FormVersion.query
+        .filter_by(form_id=formObj.form_id)
+        .order_by(FormVersion.version_number.asc(), FormVersion.form_version_id.asc())
+        .all()
+    )
+    if not formVersions:
+        return render_template(
+            "stats.html",
+            statsReady=False,
+            canEditStats=(session.get("role_name") in ("admin", "developer")),
+            isDeveloper=(session.get("role_name") == "developer"),
+            trackedQuestionKeys=[],
+            candidateQuestions=[],
+            versionFilters=[],
+            selectedFormVersionIds=[],
+        )
+
+    versionById = {int(item.form_version_id): item for item in formVersions}
+    latestVersion = formVersions[-1]
+
+    allFormLinks = (
+        db.session.query(FormVersionQuestion, QuestionVersion)
+        .join(QuestionVersion, FormVersionQuestion.question_version_id == QuestionVersion.question_version_id)
+        .filter(FormVersionQuestion.form_version_id.in_(list(versionById.keys())))
+        .order_by(FormVersionQuestion.form_version_id.asc(), FormVersionQuestion.sort_order.asc(), FormVersionQuestion.form_version_question_id.asc())
+        .all()
+    )
+
+    questionById = {}
+    optionLabelByQuestion = {}
+    latestQuestionKeySet = set()
+    latestQuestionKeyById = {}
+    subjectQuestionIds = []
+    supervisorQuestionIds = []
+    teamQuestionIds = []
+    feedbackQuestionIds = []
+    candidateQuestionMap = {}
+
+    for formVersionQuestion, questionVersion in allFormLinks:
+        qid = int(questionVersion.question_version_id)
+        questionById[qid] = questionVersion
+        optionMap = {}
+        for option in questionVersion.options:
+            optionMap[normalizeStatsText(option.option_value)] = normalizeStatsText(option.option_label) or normalizeStatsText(option.option_value)
+        optionLabelByQuestion[qid] = optionMap
+
+        promptText = normalizeStatsText(questionVersion.prompt_text)
+        promptKey = normalizeStatsKey(promptText)
+
+        if ("staff member" in promptKey or "member of staff" in promptKey or "requiring feedback" in promptKey) and "supervisor" not in promptKey:
+            subjectQuestionIds.append(qid)
+        if "supervisor" in promptKey and "email" not in promptKey:
+            supervisorQuestionIds.append(qid)
+        if "team" in promptKey:
+            teamQuestionIds.append(qid)
+        if "comment" in promptKey or "feedback" in promptKey:
+            feedbackQuestionIds.append(qid)
+
+        isCandidate = questionVersion.response_type in ("select", "multi_select", "rating") and not isIdentityPrompt(promptText)
+        if isCandidate and promptKey not in candidateQuestionMap:
+            candidateQuestionMap[promptKey] = {
+                "questionKey": promptKey,
+                "promptText": promptText,
+                "responseType": questionVersion.response_type,
+            }
+
+        if int(formVersionQuestion.form_version_id) == int(latestVersion.form_version_id):
+            latestQuestionKeyById[qid] = promptKey
+            latestQuestionKeySet.add(promptKey)
+
+    candidateQuestions = sorted(candidateQuestionMap.values(), key=lambda item: item["promptText"].lower())
+
+    statsState = getStatsState()
+    trackedQuestionKeys = [str(x) for x in statsState.get("trackedQuestionKeys", []) if str(x).strip() != ""]
+    if not trackedQuestionKeys:
+        legacyTrackedIds = [int(x) for x in statsState.get("trackedQuestionVersionIds", []) if str(x).isdigit()]
+        for qid in legacyTrackedIds:
+            promptKey = latestQuestionKeyById.get(int(qid))
+            if promptKey and promptKey not in trackedQuestionKeys:
+                trackedQuestionKeys.append(promptKey)
+
+    if request.method == "POST" and session.get("role_name") in ("admin", "developer"):
+        selectedKeys = request.form.getlist("trackedQuestionKeys")
+        trackedQuestionKeys = [str(x) for x in selectedKeys if str(x).strip() != ""]
+        trackedQuestionVersionIds = [qid for qid, promptKey in latestQuestionKeyById.items() if promptKey in trackedQuestionKeys]
+        setStatsState(trackedQuestionKeys, trackedQuestionVersionIds)
+        flash("Stats tracked questions updated.", "success")
+        return redirect(url_for("stats", versions=request.form.getlist("versions")))
+
+    if not trackedQuestionKeys:
+        trackedQuestionKeys = [item["questionKey"] for item in candidateQuestions]
+
+    selectedFormVersionIds = []
+    for value in request.args.getlist("versions"):
+        if str(value).isdigit() and int(value) in versionById:
+            selectedFormVersionIds.append(int(value))
+    if not selectedFormVersionIds:
+        selectedFormVersionIds = [int(item.form_version_id) for item in formVersions]
+
+    versionFilters = []
+    for item in sorted(formVersions, key=lambda value: (int(value.version_number), int(value.form_version_id)), reverse=True):
+        versionTitle = normalizeStatsText(item.title) or normalizeStatsText(formObj.title) or "Untitled form"
+        versionFilters.append({
+            "formVersionId": int(item.form_version_id),
+            "versionNumber": int(item.version_number),
+            "title": versionTitle,
+            "isSelected": int(item.form_version_id) in selectedFormVersionIds,
+        })
+
+    submissions = (
+        FormSubmission.query
+        .filter(FormSubmission.form_id == formObj.form_id)
+        .filter(FormSubmission.form_version_id.in_(selectedFormVersionIds))
+        .order_by(FormSubmission.submitted_at.asc(), FormSubmission.submission_id.asc())
+        .all()
+    )
+    submissionIds = [int(sub.submission_id) for sub in submissions]
+    answers = []
+    if submissionIds:
+        answers = (
+            SubmissionAnswer.query
+            .filter(SubmissionAnswer.submission_id.in_(submissionIds))
+            .all()
+        )
+
+    answersBySubmission = defaultdict(list)
+    for answer in answers:
+        answersBySubmission[int(answer.submission_id)].append(answer)
+
+    staffCounter = Counter()
+    issueCounter = Counter()
+    issueByMonthCounter = Counter()
+    submissionByMonthCounter = Counter()
+    teamCounter = Counter()
+    teamIssueCounter = defaultdict(Counter)
+    supervisorCounter = Counter()
+    supervisorIssueCounter = defaultdict(Counter)
+    staffIssueCounter = defaultdict(Counter)
+    staffSupervisorMap = {}
+    recentFeedback = []
+
+    trackedQuestionKeySet = set(trackedQuestionKeys)
+
+    for submission in submissions:
+        submissionMonthKey = monthKeyFromDate(submission.submitted_at)
+        if submissionMonthKey:
+            submissionByMonthCounter[submissionMonthKey] += 1
+        submissionAnswers = answersBySubmission.get(int(submission.submission_id), [])
+        subjectName = "Unknown"
+        supervisorName = "Unknown"
+        teamValues = []
+        feedbackText = None
+
+        for answer in submissionAnswers:
+            qid = int(answer.question_version_id)
+            if qid not in questionById:
+                continue
+            questionVersion = questionById[qid]
+            promptText = normalizeStatsText(questionVersion.prompt_text)
+            promptKey = normalizeStatsKey(promptText)
+            answerLabels = []
+            if answer.answer_option_value is not None:
+                optionValue = normalizeStatsText(answer.answer_option_value)
+                answerLabels.append(optionLabelByQuestion.get(qid, {}).get(optionValue, optionValue))
+            elif answer.answer_text is not None:
+                if questionVersion.response_type == "multi_select":
+                    answerLabels.extend([normalizeStatsText(value) for value in str(answer.answer_text).splitlines() if normalizeStatsText(value) != ""])
+                else:
+                    answerLabels.append(normalizeStatsText(answer.answer_text))
+            elif answer.answer_number is not None:
+                numberText = str(answer.answer_number)
+                if isinstance(answer.answer_number, Decimal) and answer.answer_number == answer.answer_number.to_integral():
+                    numberText = str(int(answer.answer_number))
+                answerLabels.append(numberText)
+
+            if qid in subjectQuestionIds and answerLabels:
+                subjectName = answerLabels[0]
+            if qid in supervisorQuestionIds and answerLabels:
+                supervisorName = answerLabels[0]
+            if qid in teamQuestionIds and answerLabels:
+                teamValues.extend(answerLabels)
+            if qid in feedbackQuestionIds and answerLabels and not feedbackText:
+                feedbackText = answerLabels[0]
+
+            if promptKey not in trackedQuestionKeySet:
+                continue
+            for answerLabel in answerLabels:
+                if not answerLooksLikeIssue(promptText, answerLabel):
+                    continue
+                issueLabel = f"{promptText}: {answerLabel}"
+                issueCounter[issueLabel] += 1
+                if submissionMonthKey:
+                    issueByMonthCounter[submissionMonthKey] += 1
+                staffIssueCounter[subjectName][issueLabel] += 1
+                if teamValues:
+                    for teamValue in teamValues:
+                        teamIssueCounter[teamValue][issueLabel] += 1
+                else:
+                    teamIssueCounter["Unknown"][issueLabel] += 1
+                supervisorIssueCounter[supervisorName][issueLabel] += 1
+
+        staffCounter[subjectName] += 1
+        supervisorCounter[supervisorName] += 1
+        staffSupervisorMap[subjectName] = supervisorName
+        if teamValues:
+            for teamValue in teamValues:
+                teamCounter[teamValue] += 1
+        else:
+            teamCounter["Unknown"] += 1
+
+        currentVersion = versionById.get(int(submission.form_version_id))
+        versionText = f"Version {int(currentVersion.version_number)}" if currentVersion else "Unknown version"
+        recentFeedback.append({
+            "submittedAt": submission.submitted_at,
+            "staffName": subjectName,
+            "supervisorName": supervisorName,
+            "feedbackText": feedbackText or "No comment recorded",
+            "versionText": versionText,
+        })
+
+    topStaff = staffCounter.most_common(10)
+    topIssues = issueCounter.most_common(10)
+    topTeams = teamCounter.most_common(10)
+    topSupervisors = supervisorCounter.most_common(10)
+
+    staffTable = []
+    for staffName, count in staffCounter.most_common(15):
+        staffTable.append({
+            "staffName": staffName,
+            "submissionCount": count,
+            "supervisorName": staffSupervisorMap.get(staffName, "Unknown"),
+            "topIssue": buildIssueSummary(staffIssueCounter.get(staffName, Counter()).most_common(1)),
+        })
+
+    teamTable = []
+    for teamName, count in teamCounter.most_common(15):
+        teamTable.append({
+            "teamName": teamName,
+            "submissionCount": count,
+            "topIssue": buildIssueSummary(teamIssueCounter.get(teamName, Counter()).most_common(1)),
+        })
+
+    supervisorTable = []
+    for supervisorName, count in supervisorCounter.most_common(15):
+        supervisorTable.append({
+            "supervisorName": supervisorName,
+            "submissionCount": count,
+            "topIssue": buildIssueSummary(supervisorIssueCounter.get(supervisorName, Counter()).most_common(1)),
+        })
+
+    allMonthKeys = sorted(set(list(submissionByMonthCounter.keys()) + list(issueByMonthCounter.keys())))
+    monthLabels = [monthLabelFromKey(value) for value in allMonthKeys]
+    submissionTrendData = [submissionByMonthCounter.get(value, 0) for value in allMonthKeys]
+    issueTrendData = [issueByMonthCounter.get(value, 0) for value in allMonthKeys]
+
+    nowDate = datetime.utcnow()
+    recentWindowStart = nowDate - timedelta(days=30)
+    previousWindowStart = nowDate - timedelta(days=60)
+    recentIssues = 0
+    previousIssues = 0
+    recentSubmissions = 0
+    previousSubmissions = 0
+    for submission in submissions:
+        submissionDate = submission.submitted_at or nowDate
+        issueCountForSubmission = 0
+        for answer in answersBySubmission.get(int(submission.submission_id), []):
+            qid = int(answer.question_version_id)
+            if qid not in questionById:
+                continue
+            questionVersion = questionById[qid]
+            promptText = normalizeStatsText(questionVersion.prompt_text)
+            promptKey = normalizeStatsKey(promptText)
+            if promptKey not in trackedQuestionKeySet:
+                continue
+            answerValues = []
+            if answer.answer_option_value is not None:
+                optionValue = normalizeStatsText(answer.answer_option_value)
+                answerValues.append(optionLabelByQuestion.get(qid, {}).get(optionValue, optionValue))
+            elif answer.answer_text is not None:
+                if questionVersion.response_type == "multi_select":
+                    answerValues.extend([normalizeStatsText(value) for value in str(answer.answer_text).splitlines() if normalizeStatsText(value) != ""])
+                else:
+                    answerValues.append(normalizeStatsText(answer.answer_text))
+            elif answer.answer_number is not None:
+                answerValues.append(str(answer.answer_number))
+            for answerValue in answerValues:
+                if answerLooksLikeIssue(promptText, answerValue):
+                    issueCountForSubmission += 1
+        if submissionDate >= recentWindowStart:
+            recentSubmissions += 1
+            recentIssues += issueCountForSubmission
+        elif submissionDate >= previousWindowStart:
+            previousSubmissions += 1
+            previousIssues += issueCountForSubmission
+
+    alertItems = []
+    if topIssues:
+        alertItems.append(f"Most common issue right now is {topIssues[0][0]} ({topIssues[0][1]}).")
+    if topStaff:
+        alertItems.append(f"{topStaff[0][0]} has the most forms submitted about them ({topStaff[0][1]}).")
+    if topTeams:
+        alertItems.append(f"{topTeams[0][0]} currently has the highest feedback volume ({topTeams[0][1]}).")
+    if recentIssues > previousIssues:
+        alertItems.append(f"Issue volume has increased in the last 30 days ({recentIssues} vs {previousIssues}).")
+    elif recentIssues < previousIssues:
+        alertItems.append(f"Issue volume has reduced in the last 30 days ({recentIssues} vs {previousIssues}).")
+    else:
+        alertItems.append(f"Issue volume is unchanged across the last two 30 day windows ({recentIssues}).")
+
+    summaryCards = [
+        {"label": "Total submissions", "value": len(submissions)},
+        {"label": "Unique staff members", "value": len([name for name in staffCounter.keys() if normalizeStatsKey(name) != "unknown"])},
+        {"label": "Most common issue", "value": topIssues[0][0] if topIssues else "No issue data yet"},
+        {"label": "Most submitted about", "value": topStaff[0][0] if topStaff else "No data yet"},
+        {"label": "Highest volume team", "value": topTeams[0][0] if topTeams else "No data yet"},
+    ]
+
+    chartData = {
+        "staffLabels": [name for name, _ in topStaff],
+        "staffValues": [count for _, count in topStaff],
+        "issueLabels": [name for name, _ in topIssues],
+        "issueValues": [count for _, count in topIssues],
+        "trendLabels": monthLabels,
+        "submissionTrendValues": submissionTrendData,
+        "issueTrendValues": issueTrendData,
+    }
+
+    recentFeedback = sorted(recentFeedback, key=lambda item: item["submittedAt"] or nowDate, reverse=True)[:10]
+    for item in recentFeedback:
+        if item["submittedAt"]:
+            item["submittedAtText"] = item["submittedAt"].strftime("%d/%m/%Y %H:%M")
+        else:
+            item["submittedAtText"] = "Unknown"
+
+    return render_template(
+        "stats.html",
+        statsReady=True,
+        canEditStats=(session.get("role_name") in ("admin", "developer")),
+        isDeveloper=(session.get("role_name") == "developer"),
+        trackedQuestionKeys=trackedQuestionKeys,
+        candidateQuestions=candidateQuestions,
+        summaryCards=summaryCards,
+        chartData=chartData,
+        topIssues=topIssues,
+        topStaff=topStaff,
+        teamTable=teamTable,
+        supervisorTable=supervisorTable,
+        staffTable=staffTable,
+        recentFeedback=recentFeedback,
+        alertItems=alertItems,
+        versionFilters=versionFilters,
+        selectedFormVersionIds=selectedFormVersionIds,
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)

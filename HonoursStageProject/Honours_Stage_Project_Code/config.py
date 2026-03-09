@@ -9,6 +9,8 @@ class Config:
     ALLOWED_LOGO_EXTENSIONS = {"png", "jpg", "jpeg", "svg", "webp"}
     DEFAULT_LOGO_FILENAME = "defaultLogo.svg"
     BRANDING_STATE_FILENAME = "siteBranding.json"
+    BRANDING_STATE_PATH = os.path.join(baseDir, "branding", "siteBranding.json")
+    STATS_STATE_PATH = os.path.join(baseDir, "statsConfig.json")
 
     THEME_BACKGROUND_COLOR = "lightblue"
     THEME_BUTTON_COLOR = "#2c6bed"

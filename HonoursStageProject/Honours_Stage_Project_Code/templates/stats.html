@@ -1,31 +1,424 @@
-<!-- 
-Coding Credits:
-
-For the purposes of acknowledgement, this HTML structure was inspired by the following tutorial:
-https://youtu.be/Z1RJmh_OqeA
--->
-
 {% extends "base.html" %}
-{% block title %}Sign in{% endblock %}
+{% block title %}Stats{% endblock %}
 
 {% block content %}
-<h1>Sign in</h1>
+<style>
+  .statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .statsCard, .statsPanel {
+    background: #ffffff;
+    border: 1px solid #d7dbe3;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.04);
+  }
+  .statsCardLabel {
+    font-size: 0.9rem;
+    color: #5a6578;
+    margin-bottom: 8px;
+  }
+  .statsCardValue {
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: #1f2937;
+    line-height: 1.25;
+  }
+  .statsTwoCol {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 18px;
+    margin-bottom: 20px;
+  }
+  .statsPanel h2 {
+    margin-top: 0;
+    margin-bottom: 12px;
+  }
+  .statsChartPanel {
+    overflow: hidden;
+  }
+  .statsChartPanel .chartWrap {
+    height: 320px;
+    min-height: 320px;
+    max-height: 320px;
+  }
+  .statsChartPanel .chartWrap.chartWrapLarge {
+    height: 340px;
+    min-height: 340px;
+    max-height: 340px;
+  }
+  .statsList {
+    margin: 0;
+    padding-left: 20px;
+  }
+  .statsList li {
+    margin-bottom: 10px;
+  }
+  .statsTableWrap {
+    overflow-x: auto;
+  }
+  .statsTable {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .statsTable th,
+  .statsTable td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid #e7ebf1;
+    vertical-align: top;
+  }
+  .statsTable th {
+    font-size: 0.9rem;
+    color: #445066;
+  }
+  .mutedStat {
+    color: #657086;
+    margin-top: 0;
+  }
+  .trackedQuestionList {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+    margin-bottom: 14px;
+  }
+  .trackedQuestionItem {
+    border: 1px solid #dfe5ee;
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: #f8fafc;
+  }
+  .trackedQuestionItem label {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .feedbackItem {
+    border-bottom: 1px solid #e7ebf1;
+    padding: 10px 0;
+  }
+  .feedbackItem:last-child {
+    border-bottom: none;
+  }
+  .chartWrap {
+    position: relative;
+    height: 320px;
+    width: 100%;
+  }
+  .chartWrap.chartWrapLarge {
+    height: 340px;
+  }
+  .chartWrap canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+  }
+</style>
 
-<form method="POST" action="{{ url_for('index') }}">
-  <label for="username">Username</label><br>
-  <input id="username" name="username" type="text" autocomplete="username" required
-         style="width:100%; padding:10px; margin:6px 0 12px;"><br>
+<h1>Training Insights</h1>
+<p class="mutedStat">This page is designed to show recurring issues, repeat feedback subjects, and trends that can help target future training.</p>
 
-  <label for="password">Password</label><br>
-  <input id="password" name="password" type="password" autocomplete="current-password" required
-         style="width:100%; padding:10px; margin:6px 0 16px;"><br>
+{% if not statsReady %}
+  <div class="statsPanel">
+    <p>No active form or form version is available yet, so stats cannot be shown.</p>
+  </div>
+{% else %}
+  <section class="statsPanel" style="margin-bottom:20px;">
+    <h2>Form version filter</h2>
+    <p class="mutedStat">All form versions are shown by default. Untick any versions you do not want included.</p>
+    <form method="GET">
+      <div class="trackedQuestionList">
+        {% for item in versionFilters %}
+          <div class="trackedQuestionItem">
+            <label>
+              <input type="checkbox" name="versions" value="{{ item.formVersionId }}" {% if item.isSelected %}checked{% endif %}>
+              <span>
+                <strong>Version {{ item.versionNumber }}</strong><br>
+                <span class="mutedStat">{{ item.title }}</span>
+              </span>
+            </label>
+          </div>
+        {% endfor %}
+      </div>
+      <button type="submit" class="primaryButton">Apply version filter</button>
+    </form>
+  </section>
 
-  <button type="submit" style="padding:10px 14px;">Sign in</button>
-</form>
+  <div class="statsGrid">
+    {% for card in summaryCards %}
+      <div class="statsCard">
+        <div class="statsCardLabel">{{ card.label }}</div>
+        <div class="statsCardValue">{{ card.value }}</div>
+      </div>
+    {% endfor %}
+  </div>
 
-<p style="margin-top:16px;">
-  <a href="{{ url_for('signup') }}">Create an account</a>
-  &nbsp;|&nbsp;
-  <a href="{{ url_for('reset_password') }}">Forgot password?</a>
-</p>
+  <div class="statsTwoCol">
+    <section class="statsPanel">
+      <h2>Training alerts</h2>
+      <ul class="statsList">
+        {% for item in alertItems %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    {% if canEditStats %}
+      <section class="statsPanel">
+        <h2>Tracked issue questions</h2>
+        <p class="mutedStat">Developers and admins can choose which question fields feed the recurring issue charts and tables.</p>
+        <form method="POST">
+          <div class="trackedQuestionList">
+            {% for item in candidateQuestions %}
+              <div class="trackedQuestionItem">
+                <label>
+                  <input type="checkbox" name="trackedQuestionKeys" value="{{ item.questionKey }}" {% if item.questionKey in trackedQuestionKeys %}checked{% endif %}>
+                  <span>
+                    <strong>{{ item.promptText }}</strong><br>
+                    <span class="mutedStat">{{ item.responseType }}</span>
+                  </span>
+                </label>
+              </div>
+            {% endfor %}
+          </div>
+          {% for value in selectedFormVersionIds %}
+            <input type="hidden" name="versions" value="{{ value }}">
+          {% endfor %}
+          <button type="submit" class="primaryButton">Save tracked questions</button>
+        </form>
+      </section>
+    {% endif %}
+  </div>
+
+  <div class="statsTwoCol">
+    <section class="statsPanel statsChartPanel">
+      <h2>People with the most forms submitted about them</h2>
+      <div class="chartWrap"><canvas id="staffChart"></canvas></div>
+    </section>
+
+    <section class="statsPanel statsChartPanel">
+      <h2>Common recurring issues</h2>
+      <div class="chartWrap"><canvas id="issueChart"></canvas></div>
+    </section>
+  </div>
+
+  <section class="statsPanel statsChartPanel" style="margin-bottom:20px;">
+    <h2>Trend over time</h2>
+    <p class="mutedStat">Use this to see whether feedback volume and issue volume are improving after training is introduced.</p>
+    <div class="chartWrap chartWrapLarge"><canvas id="trendChart"></canvas></div>
+  </section>
+
+  <div class="statsTwoCol">
+    <section class="statsPanel">
+      <h2>Top recurring issues</h2>
+      <div class="statsTableWrap">
+        <table class="statsTable">
+          <thead>
+            <tr>
+              <th>Issue</th>
+              <th>Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for issueName, issueCount in topIssues %}
+              <tr>
+                <td>{{ issueName }}</td>
+                <td>{{ issueCount }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="2">No issue data yet.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="statsPanel">
+      <h2>Staff needing attention</h2>
+      <div class="statsTableWrap">
+        <table class="statsTable">
+          <thead>
+            <tr>
+              <th>Staff member</th>
+              <th>Submissions</th>
+              <th>Supervisor</th>
+              <th>Top issue</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in staffTable %}
+              <tr>
+                <td>{{ row.staffName }}</td>
+                <td>{{ row.submissionCount }}</td>
+                <td>{{ row.supervisorName }}</td>
+                <td>{{ row.topIssue }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="4">No staff data yet.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="statsTwoCol">
+    <section class="statsPanel">
+      <h2>Team breakdown</h2>
+      <div class="statsTableWrap">
+        <table class="statsTable">
+          <thead>
+            <tr>
+              <th>Team</th>
+              <th>Submissions</th>
+              <th>Top issue</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in teamTable %}
+              <tr>
+                <td>{{ row.teamName }}</td>
+                <td>{{ row.submissionCount }}</td>
+                <td>{{ row.topIssue }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="3">No team data yet.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="statsPanel">
+      <h2>Supervisor breakdown</h2>
+      <div class="statsTableWrap">
+        <table class="statsTable">
+          <thead>
+            <tr>
+              <th>Supervisor</th>
+              <th>Submissions</th>
+              <th>Top issue</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in supervisorTable %}
+              <tr>
+                <td>{{ row.supervisorName }}</td>
+                <td>{{ row.submissionCount }}</td>
+                <td>{{ row.topIssue }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="3">No supervisor data yet.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <section class="statsPanel">
+    <h2>Recent feedback comments</h2>
+    {% for item in recentFeedback %}
+      <div class="feedbackItem">
+        <strong>{{ item.staffName }}</strong> · {{ item.supervisorName }} · {{ item.versionText }} · {{ item.submittedAtText }}<br>
+        <span>{{ item.feedbackText }}</span>
+      </div>
+    {% else %}
+      <p>No recent feedback comments yet.</p>
+    {% endfor %}
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const chartData = {{ chartData | tojson }};
+
+    function makeBarChart(canvasId, labels, values, labelText) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas || !labels || !labels.length) return;
+      canvas.height = 320;
+      new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: labelText,
+            data: values,
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+      });
+    }
+
+    function makePieChart(canvasId, labels, values) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas || !labels || !labels.length) return;
+      canvas.height = 320;
+      new Chart(canvas, {
+        type: 'pie',
+        data: {
+          labels: labels,
+          datasets: [{ data: values }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false
+        }
+      });
+    }
+
+    function makeTrendChart() {
+      const canvas = document.getElementById('trendChart');
+      if (!canvas || !chartData.trendLabels || !chartData.trendLabels.length) return;
+      canvas.height = 320;
+      canvas.height = 340;
+      new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: chartData.trendLabels,
+          datasets: [
+            {
+              label: 'Submissions',
+              data: chartData.submissionTrendValues,
+              tension: 0.2,
+              fill: false
+            },
+            {
+              label: 'Issues',
+              data: chartData.issueTrendValues,
+              tension: 0.2,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+      });
+    }
+
+    makeBarChart('staffChart', chartData.staffLabels, chartData.staffValues, 'Submissions');
+    makePieChart('issueChart', chartData.issueLabels, chartData.issueValues);
+    makeTrendChart();
+  </script>
+{% endif %}
 {% endblock %}
