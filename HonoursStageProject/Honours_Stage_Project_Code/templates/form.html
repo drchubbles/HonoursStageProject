@@ -313,6 +313,28 @@ https://youtu.be/Z1RJmh_OqeA
       const shouldShow = evalRule(rule);
       if (rule.action === "show") {
         wrap.style.display = shouldShow ? "" : "none";
+
+        const formFields = wrap.querySelectorAll("input, select, textarea");
+        formFields.forEach(field => {
+          const isRequired = field.dataset.required === "1";
+
+          if (shouldShow) {
+            field.disabled = false;
+            if (isRequired) {
+              field.required = true;
+            }
+          } else {
+            field.disabled = true;
+            field.required = false;
+            if (field.type === "checkbox" || field.type === "radio") {
+              field.checked = false;
+            } else if (field.tagName === "SELECT") {
+              field.selectedIndex = 0;
+            } else {
+              field.value = "";
+            }
+          }
+        });
       }
     });
   }
