@@ -10,10 +10,10 @@ Areas that have been completed are noted down with an **x**, areas that still ne
 | - | -------- | -------- | -------- |
 | x | **Project Planning & Research**| Defining the project scope, reviewing relevant literature, surveying available technologies, and selecting the final technology stack. | Milestone 1 – Project Initiation|
 | x | **System & UX Design**| Designing the user experience and system architecture, including UI sketches, wireframes, database schema, personas, and stakeholder validation. | Milestone 2 – Early Prototyping |
-| - | **Prototype Creation & Validation** | Creating interactive prototypes, defining form questions, generating mock/sample data, and validating designs with the Data Admin team.| Milestone 3 – Prototyping/Design|
+| x | **Prototype Creation & Validation** | Creating interactive prototypes, defining form questions, generating mock/sample data, and validating designs with the Data Admin team.| Milestone 3 – Prototyping/Design|
 | x | **Core Forms Functionality Development** | Building the database, forms UI, form-question integration, edit functionality, feedback system, and validating correct form behavior.| Milestone 4 – Forms Section|
 | x | **Authentication & Admin Controls**| Implementing admin login, role-based permissions, and restricting sensitive actions (e.g., editing questions) to administrators.| Milestone 5 – Admin Profiles|
-| o | **Dashboard & Data Visualization**| Developing dashboards, visual data displays, charts, and systems to highlight recurring issues for staff.| Milestone 6 – Dashboard|
+| x | **Dashboard & Data Visualization**| Developing dashboards, visual data displays, charts, and systems to highlight recurring issues for staff.| Milestone 6 – Dashboard|
 |  | **Enhancement & Polish (Optional)**| Adding “nice-to-have” features, usability improvements, and refinements if time allows.| Post-Milestone / Stretch Goals|
 
 This code is done using pyflare order to ensure it works properly please clone the repositoy and following that, use the SQL scripts provided to create the database. Then ensure you have the packets necissary installed to run the code by running:
