@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Branding{% endblock %}
+
+{% block content %}
+<h1>Branding</h1>
+
+<form method="POST" enctype="multipart/form-data">
+  <div>
+    <label for="logo">Upload logo</label>
+    <input type="file" id="logo" name="logo" accept=".png,.jpg,.jpeg,.svg,.webp" required>
+  </div>
+  <div style="margin-top: 10px;">
+    <input type="submit" value="Save">
+  </div>
+</form>
+
+<div style="margin-top: 16px;">
+  <p>Current logo:</p>
+  <img src="{{ siteLogoUrl }}" alt="Current logo" style="max-height: 80px; width: auto;">
+</div>
+{% endblock %}

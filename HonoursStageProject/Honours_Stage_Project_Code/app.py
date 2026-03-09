@@ -3,15 +3,50 @@
 from __future__ import annotations
 import os
 import uuid
+import json
 from functools import wraps
 from decimal import Decimal
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from config import Config
 
 app = Flask(__name__)
 
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
+
+def ensureBrandingState():
+    uploadLogoFolder = app.config.get("UPLOAD_LOGO_FOLDER")
+    if not uploadLogoFolder:
+        uploadLogoFolder = os.path.join(app.root_path, "static", "uploads", "logos")
+    if uploadLogoFolder:
+        os.makedirs(uploadLogoFolder, exist_ok=True)
+    brandingStateFilename = app.config.get("BRANDING_STATE_FILENAME", "siteBranding.json")
+    brandingStatePath = os.path.join(uploadLogoFolder, brandingStateFilename)
+    if not os.path.exists(brandingStatePath):
+        with open(brandingStatePath, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"logoFilename": None}, indent=2))
+    return brandingStatePath
+
+def getBrandingState():
+    brandingStatePath = ensureBrandingState()
+    with open(brandingStatePath, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def setBrandingState(logoFilename: str | None):
+    brandingStatePath = ensureBrandingState()
+    with open(brandingStatePath, "w", encoding="utf-8") as f:
+        f.write(json.dumps({"logoFilename": logoFilename}, indent=2))
+
+def allowedLogo(filename: str) -> bool:
+    if "." not in filename:
+        return False
+    ext = filename.rsplit(".", 1)[1].lower()
+    allowed = app.config.get("ALLOWED_LOGO_EXTENSIONS", set())
+    return ext in allowed
+
+app.config.from_object(Config)
+
 
 DB_USER = os.environ.get("DB_USER", "admin")
 DB_PASS = os.environ.get("DB_PASS", "A-Strong-Password")
@@ -63,6 +98,8 @@ class FormVersion(db.Model):
     form_version_id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     form_id = db.Column(db.BigInteger, db.ForeignKey("forms.form_id"), nullable=False)
     version_number = db.Column(db.Integer, nullable=False)
+    title = db.Column(db.String(255), nullable=True)
+    description = db.Column(db.Text, nullable=True)
     created_by = db.Column(db.BigInteger, db.ForeignKey("users.user_id"), nullable=False)
     notes = db.Column(db.String(255), nullable=True)
 
@@ -84,6 +121,9 @@ class QuestionVersion(db.Model):
     prompt_text = db.Column(db.Text, nullable=False)
     response_type = db.Column(db.String(32), nullable=False)
     is_required = db.Column(db.Boolean, nullable=False, default=False)
+    hint_text = db.Column(db.Text, nullable=True)
+    question_description = db.Column(db.Text, nullable=True)
+    is_locked = db.Column(db.Boolean, nullable=False, default=False)
     help_text = db.Column(db.Text, nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_by = db.Column(db.BigInteger, db.ForeignKey("users.user_id"), nullable=False)
@@ -114,12 +154,23 @@ class QuestionVersionOption(db.Model):
     question_version = db.relationship("QuestionVersion", back_populates="options")
 
 
+
+class FormVersionSection(db.Model):
+    __tablename__ = "form_version_sections"
+
+    section_id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    form_version_id = db.Column(db.BigInteger, db.ForeignKey("form_versions.form_version_id"), nullable=False, index=True)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+
 class FormVersionQuestion(db.Model):
     __tablename__ = "form_version_questions"
 
     form_version_question_id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
     form_version_id = db.Column(db.BigInteger, db.ForeignKey("form_versions.form_version_id"), nullable=False)
     question_version_id = db.Column(db.BigInteger, db.ForeignKey("question_versions.question_version_id"), nullable=False)
+    section_id = db.Column(db.BigInteger, db.ForeignKey("form_version_sections.section_id"), nullable=True)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
 
 
@@ -180,8 +231,62 @@ def admin_required(view_func):
     return wrapper
 
 
+def editor_required(view_func):
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("index"))
+        role_name = session.get("role_name")
+        if role_name not in ("admin", "developer"):
+            flash("Editors only.", "error")
+            return redirect(url_for("dashboard"))
+        return view_func(*args, **kwargs)
+    return wrapper
+
+@app.context_processor
+def injectBranding():
+    brandingState = getBrandingState()
+    logoFilename = brandingState.get("logoFilename") or app.config.get("DEFAULT_LOGO_FILENAME")
+    siteLogoUrl = url_for("static", filename=f"uploads/logos/{logoFilename}")
+    themeBackgroundColor = app.config.get("THEME_BACKGROUND_COLOR")
+    themeButtonColor = app.config.get("THEME_BUTTON_COLOR")
+    themeButtonTextColor = app.config.get("THEME_BUTTON_TEXT_COLOR")
+    return {
+        "siteLogoUrl": siteLogoUrl,
+        "themeBackgroundColor": themeBackgroundColor,
+        "themeButtonColor": themeButtonColor,
+        "themeButtonTextColor": themeButtonTextColor,
+    }
+
+
+@app.route("/admin/branding", methods=["GET", "POST"])
+@admin_required
+def branding():
+    if request.method == "POST":
+        file = request.files.get("logo")
+        if not file or not file.filename:
+            flash("No file selected.", "error")
+            return redirect(url_for("branding"))
+        if not allowedLogo(file.filename):
+            flash("Invalid file type.", "error")
+            return redirect(url_for("branding"))
+        ext = file.filename.rsplit(".", 1)[1].lower()
+        logoFilename = secure_filename(f"logo_{uuid.uuid4().hex}.{ext}")
+        uploadLogoFolder = app.config.get("UPLOAD_LOGO_FOLDER")
+        if not uploadLogoFolder:
+            uploadLogoFolder = os.path.join(app.root_path, "static", "uploads", "logos")
+        os.makedirs(uploadLogoFolder, exist_ok=True)
+        savePath = os.path.join(uploadLogoFolder, logoFilename)
+        file.save(savePath)
+        setBrandingState(logoFilename)
+        flash("Logo updated.", "success")
+        return redirect(url_for("branding"))
+    return render_template("branding.html")
+
+
+
 def seed_roles_if_missing():
-    for role_name in ("admin", "standard"):
+    for role_name in ("admin", "standard", "developer"):
         if not Role.query.filter_by(role_name=role_name).first():
             db.session.add(Role(role_name=role_name))
     db.session.commit()
@@ -208,17 +313,53 @@ def _get_active_form_and_latest_version():
     return f, v
 
 
-def _get_questions_for_version(form_version_id: int):
-    return (
-        db.session.query(QuestionVersion)
+def _get_sections_for_version(form_version_id: int):
+    sections = (
+        db.session.query(FormVersionSection)
+        .filter(FormVersionSection.form_version_id == form_version_id)
+        .order_by(FormVersionSection.sort_order.asc(), FormVersionSection.section_id.asc())
+        .all()
+    )
+
+    rows = (
+        db.session.query(FormVersionQuestion, QuestionVersion)
         .join(
-            FormVersionQuestion,
+            QuestionVersion,
             FormVersionQuestion.question_version_id == QuestionVersion.question_version_id,
         )
         .filter(FormVersionQuestion.form_version_id == form_version_id)
-        .order_by(FormVersionQuestion.sort_order)
         .all()
     )
+
+    unsectioned = []
+    section_questions = {}
+
+    for fvq, qv in rows:
+        sid = fvq.section_id
+        if sid is None:
+            unsectioned.append((int(fvq.sort_order or 0), qv))
+        else:
+            section_questions.setdefault(int(sid), []).append((int(fvq.sort_order or 0), qv))
+
+    unsectioned_questions = [q for _, q in sorted(unsectioned, key=lambda t: t[0])]
+
+    sections_with_questions = []
+    for s in sections:
+        q_list = section_questions.get(int(s.section_id), [])
+        q_sorted = [q for _, q in sorted(q_list, key=lambda t: t[0])]
+        sections_with_questions.append({"section": s, "questions": q_sorted})
+
+    return unsectioned_questions, sections_with_questions
+
+
+def _get_questions_for_version(form_version_id: int):
+    unsectioned_questions, sections_with_questions = _get_sections_for_version(form_version_id)
+    out = []
+    out.extend(unsectioned_questions)
+    for item in sections_with_questions:
+        out.extend(item.get("questions") or [])
+    return out
+
 
 
 def _get_branching_for_version(form_version_id: int):
@@ -374,7 +515,7 @@ def view_submission(submission_id: int):
     form_obj = Form.query.filter_by(form_id=submission.form_id).first()
     form_version = FormVersion.query.filter_by(form_version_id=submission.form_version_id).first()
 
-    questions = _get_questions_for_version(submission.form_version_id)
+    unsectioned_questions, sections_with_questions = _get_sections_for_version(submission.form_version_id)
 
     answer_rows = (
         SubmissionAnswer.query.filter_by(submission_id=submission.submission_id)
@@ -394,7 +535,9 @@ def view_submission(submission_id: int):
         "form.html",
         form=form_obj,
         form_version=form_version,
-        questions=questions,
+        unsectioned_questions=unsectioned_questions,
+        sections_with_questions=sections_with_questions,
+        questions=(unsectioned_questions + [q for s in sections_with_questions for q in (s.get("questions") or [])]),
         is_admin=is_admin,
         view_only=True,
         answers=answers,
@@ -427,7 +570,8 @@ def form():
 
     if request.method == "POST":
         user_id = int(session["user_id"])
-        questions = _get_questions_for_version(latest_version.form_version_id)
+        unsectioned_questions, sections_with_questions = _get_sections_for_version(latest_version.form_version_id)
+        questions = unsectioned_questions + [q for s in sections_with_questions for q in (s.get("questions") or [])]
 
         sub = FormSubmission(
             form_id=form_obj.form_id,
@@ -469,19 +613,21 @@ def form():
         flash("Form submitted.", "success")
         return redirect(url_for("form"))
 
-    questions = _get_questions_for_version(latest_version.form_version_id)
+    unsectioned_questions, sections_with_questions = _get_sections_for_version(latest_version.form_version_id)
 
     return render_template(
         "form.html",
         form=form_obj,
         form_version=latest_version,
-        questions=questions,
+        unsectioned_questions=unsectioned_questions,
+        sections_with_questions=sections_with_questions,
+        questions=(unsectioned_questions + [q for s in sections_with_questions for q in (s.get("questions") or [])]),
         is_admin=session.get("role_name") == "admin",
     )
 
 
 @app.route("/edit-form", methods=["GET", "POST"])
-@admin_required
+@editor_required
 def editform():
     form_obj, latest_version = _get_active_form_and_latest_version()
 
@@ -495,221 +641,320 @@ def editform():
 
     if request.method == "POST":
         user_id = int(session["user_id"])
+        isDeveloper = session.get("role_name") == "developer"
         next_version_number = int(latest_version.version_number) + 1
 
-        ordered_existing = request.form.getlist("existing_qv_id")
-        delete_ids = set(request.form.getlist("delete_qv_id"))
+        formTitle = (request.form.get("form_title") or "").strip()
+        formDescription = (request.form.get("form_description") or "").strip()
+        if not formTitle:
+            formTitle = (latest_version.title or form_obj.title or "").strip() or "Untitled form"
 
-        final_existing_qv_ids = []
+        ordered_items = request.form.getlist("ordered_item")
+        if not ordered_items:
+            ordered_existing = request.form.getlist("existing_qv_id")
+            ordered_items = [f"existing:{x}" for x in ordered_existing if x]
+        delete_ids = set(request.form.getlist("delete_qv_id"))
+        if session.get("role_name") != "developer":
+            filtered = set()
+            for x in delete_ids:
+                try:
+                    qv = QuestionVersion.query.filter_by(question_version_id=int(x)).first()
+                    if qv and not qv.is_locked:
+                        filtered.add(x)
+                except Exception:
+                    pass
+            delete_ids = filtered
+
+        all_qv_ids = []
         qv_id_map = {}
 
         label_to_value_for_old_qvid = {}
 
-        for qv_id_str in ordered_existing:
-            if not qv_id_str:
+        for item in ordered_items:
+            raw = (item or "").strip()
+            if not raw or ":" not in raw:
                 continue
-            if qv_id_str in delete_ids:
-                continue
+            kind, ident = raw.split(":", 1)
+            kind = kind.strip()
+            ident = ident.strip()
 
-            qv_id = int(qv_id_str)
-            current_qv = QuestionVersion.query.filter_by(question_version_id=qv_id).first()
-            if not current_qv:
-                continue
+            if kind == "existing":
+                if not ident:
+                    continue
+                if ident in delete_ids:
+                    continue
 
-            new_prompt = (request.form.get(f"existing_prompt_{qv_id}") or "").strip()
-            new_type = (request.form.get(f"existing_type_{qv_id}") or "").strip()
-            new_required = (request.form.get(f"existing_required_{qv_id}") or "0").strip()
-            new_help = (request.form.get(f"existing_help_{qv_id}") or "").strip()
-            new_options_text = request.form.get(f"existing_options_{qv_id}") or ""
+                qv_id = int(ident)
+                current_qv = QuestionVersion.query.filter_by(question_version_id=qv_id).first()
+                if not current_qv:
+                    continue
 
-            if not new_prompt:
-                new_prompt = current_qv.prompt_text
+                new_prompt = (request.form.get(f"existing_prompt_{qv_id}") or "").strip()
+                new_type = (request.form.get(f"existing_type_{qv_id}") or "").strip()
+                new_required = (request.form.get(f"existing_required_{qv_id}") or "0").strip()
+                new_hint = (request.form.get(f"existing_hint_{qv_id}") or "").strip()
+                new_desc = (request.form.get(f"existing_desc_{qv_id}") or "").strip()
+                new_locked_raw = (request.form.get(f"existing_locked_{qv_id}") or "").strip()
+                new_options_text = request.form.get(f"existing_options_{qv_id}") or ""
 
-            if new_type not in ("text", "number", "rating", "select", "multi_select"):
-                new_type = current_qv.response_type
+                if not new_prompt:
+                    new_prompt = current_qv.prompt_text
 
-            req_bool = (new_required == "1")
-            help_val = new_help if new_help else None
+                if new_type not in ("text", "number", "rating", "select", "multi_select"):
+                    new_type = current_qv.response_type
 
-            current_options_lines = []
-            if current_qv.response_type in ("select", "multi_select"):
-                for opt in current_qv.options:
-                    t = (opt.option_label or "").strip()
-                    if t:
-                        current_options_lines.append(t)
+                req_bool = (new_required == "1")
+                hint_val = new_hint if new_hint else None
+                desc_val = new_desc if new_desc else None
+                locked_val = (new_locked_raw == "1") if isDeveloper else bool(current_qv.is_locked)
 
-            new_options_lines = []
-            if new_type in ("select", "multi_select"):
-                for line in (new_options_text or "").splitlines():
-                    t = line.strip()
-                    if t:
-                        new_options_lines.append(t)
-
-            changed = False
-
-            if (current_qv.prompt_text or "").strip() != new_prompt:
-                changed = True
-            if (current_qv.response_type or "").strip() != new_type:
-                changed = True
-            if bool(current_qv.is_required) != req_bool:
-                changed = True
-            if (current_qv.help_text or "") != (help_val or ""):
-                changed = True
-            if new_type in ("select", "multi_select") or current_qv.response_type in ("select", "multi_select"):
-                if current_options_lines != new_options_lines:
-                    changed = True
-
-            if not changed:
-                final_existing_qv_ids.append(qv_id)
-                qv_id_map[qv_id] = qv_id
+                current_options_lines = []
                 if current_qv.response_type in ("select", "multi_select"):
-                    m = {}
                     for opt in current_qv.options:
-                        lbl = (opt.option_label or "").strip()
-                        val = (opt.option_value or "").strip()
-                        if lbl:
+                        t = (opt.option_label or "").strip()
+                        if t:
+                            current_options_lines.append(t)
+
+                new_options_lines = []
+                if new_type in ("select", "multi_select"):
+                    for line in (new_options_text or "").splitlines():
+                        t = line.strip()
+                        if t:
+                            new_options_lines.append(t)
+
+                changed = False
+
+                if (current_qv.prompt_text or "").strip() != new_prompt:
+                    changed = True
+                if (current_qv.response_type or "").strip() != new_type:
+                    changed = True
+                if bool(current_qv.is_required) != req_bool:
+                    changed = True
+                cur_hint = (current_qv.hint_text or current_qv.help_text or "")
+                if (cur_hint or "") != (hint_val or ""):
+                    changed = True
+                if (current_qv.question_description or "") != (desc_val or ""):
+                    changed = True
+                if bool(current_qv.is_locked) != bool(locked_val):
+                    changed = True
+                if new_type in ("select", "multi_select") or current_qv.response_type in ("select", "multi_select"):
+                    if current_options_lines != new_options_lines:
+                        changed = True
+
+                if not changed:
+                    all_qv_ids.append(qv_id)
+                    qv_id_map[qv_id] = qv_id
+                    if current_qv.response_type in ("select", "multi_select"):
+                        m = {}
+                        for opt in current_qv.options:
+                            lbl = (opt.option_label or "").strip()
+                            val = (opt.option_value or "").strip()
+                            if lbl:
+                                m[lbl] = val if val else lbl
+                        label_to_value_for_old_qvid[qv_id] = m
+                    else:
+                        label_to_value_for_old_qvid[qv_id] = {}
+                    continue
+
+                max_ver = (
+                    db.session.query(db.func.max(QuestionVersion.version_number))
+                    .filter(QuestionVersion.question_id == current_qv.question_id)
+                    .scalar()
+                )
+                next_qv_ver = int(max_ver or 0) + 1
+
+                new_qv = QuestionVersion(
+                    question_id=current_qv.question_id,
+                    version_number=next_qv_ver,
+                    prompt_text=new_prompt,
+                    response_type=new_type,
+                    is_required=req_bool,
+                    hint_text=hint_val,
+                    question_description=desc_val,
+                    is_locked=locked_val,
+                    help_text=None,
+                    is_active=True,
+                    created_by=user_id,
+                )
+                db.session.add(new_qv)
+                db.session.flush()
+
+                if new_type in ("select", "multi_select"):
+                    options_unchanged = (
+                        (current_qv.response_type in ("select", "multi_select"))
+                        and (current_options_lines == new_options_lines)
+                    )
+
+                    if options_unchanged and current_qv.response_type in ("select", "multi_select"):
+                        m = {}
+                        for opt in current_qv.options:
+                            lbl = (opt.option_label or "").strip()
+                            val = (opt.option_value or "").strip()
+                            if not lbl:
+                                continue
+                            db.session.add(
+                                QuestionVersionOption(
+                                    question_version_id=new_qv.question_version_id,
+                                    option_value=val if val else lbl,
+                                    option_label=lbl,
+                                    sort_order=int(opt.sort_order or 0),
+                                )
+                            )
                             m[lbl] = val if val else lbl
-                    label_to_value_for_old_qvid[qv_id] = m
+                        label_to_value_for_old_qvid[qv_id] = m
+                    else:
+                        for idx, label in enumerate(new_options_lines):
+                            db.session.add(
+                                QuestionVersionOption(
+                                    question_version_id=new_qv.question_version_id,
+                                    option_value=label,
+                                    option_label=label,
+                                    sort_order=idx,
+                                )
+                            )
+                        label_to_value_for_old_qvid[qv_id] = {lbl: lbl for lbl in new_options_lines}
                 else:
                     label_to_value_for_old_qvid[qv_id] = {}
-                continue
 
-            max_ver = (
-                db.session.query(db.func.max(QuestionVersion.version_number))
-                .filter(QuestionVersion.question_id == current_qv.question_id)
-                .scalar()
-            )
-            next_qv_ver = int(max_ver or 0) + 1
+                all_qv_ids.append(int(new_qv.question_version_id))
+                qv_id_map[qv_id] = int(new_qv.question_version_id)
 
-            new_qv = QuestionVersion(
-                question_id=current_qv.question_id,
-                version_number=next_qv_ver,
-                prompt_text=new_prompt,
-                response_type=new_type,
-                is_required=req_bool,
-                help_text=help_val,
-                is_active=True,
-                created_by=user_id,
-            )
-            db.session.add(new_qv)
-            db.session.flush()
+            elif kind == "new":
+                key = ident
+                prompt = (request.form.get(f"new_prompt_{key}") or "").strip()
+                rtype = (request.form.get(f"new_type_{key}") or "").strip()
+                req = (request.form.get(f"new_required_{key}") or "0").strip()
+                hint_text = (request.form.get(f"new_hint_{key}") or "").strip()
+                qdesc = (request.form.get(f"new_desc_{key}") or "").strip()
+                new_locked_raw = (request.form.get(f"new_locked_{key}") or "").strip()
+                options_text = (request.form.get(f"new_options_{key}") or "")
 
-            if new_type in ("select", "multi_select"):
-                options_unchanged = (
-                    (current_qv.response_type in ("select", "multi_select"))
-                    and (current_options_lines == new_options_lines)
+                if not prompt:
+                    continue
+                if rtype not in ("text", "number", "rating", "select", "multi_select"):
+                    continue
+
+                q = Question(question_key=uuid.uuid4().hex, created_by=user_id)
+                db.session.add(q)
+                db.session.flush()
+
+                qv = QuestionVersion(
+                    question_id=q.question_id,
+                    version_number=1,
+                    prompt_text=prompt,
+                    response_type=rtype,
+                    is_required=(req == "1"),
+                    hint_text=(hint_text if hint_text else None),
+                    question_description=(qdesc if qdesc else None),
+                    is_locked=((new_locked_raw == "1") if isDeveloper else False),
+                    help_text=None,
+                    is_active=True,
+                    created_by=user_id,
                 )
+                db.session.add(qv)
+                db.session.flush()
 
-                if options_unchanged and current_qv.response_type in ("select", "multi_select"):
-                    m = {}
-                    for opt in current_qv.options:
-                        lbl = (opt.option_label or "").strip()
-                        val = (opt.option_value or "").strip()
-                        if not lbl:
-                            continue
+                if rtype in ("select", "multi_select"):
+                    lines = []
+                    for line in (options_text or "").splitlines():
+                        t = line.strip()
+                        if t:
+                            lines.append(t)
+                    for idx, label in enumerate(lines):
                         db.session.add(
                             QuestionVersionOption(
-                                question_version_id=new_qv.question_version_id,
-                                option_value=val if val else lbl,
-                                option_label=lbl,
-                                sort_order=int(opt.sort_order or 0),
-                            )
-                        )
-                        m[lbl] = val if val else lbl
-                    label_to_value_for_old_qvid[qv_id] = m
-                else:
-                    for idx, label in enumerate(new_options_lines):
-                        db.session.add(
-                            QuestionVersionOption(
-                                question_version_id=new_qv.question_version_id,
+                                question_version_id=qv.question_version_id,
                                 option_value=label,
                                 option_label=label,
                                 sort_order=idx,
                             )
                         )
-                    label_to_value_for_old_qvid[qv_id] = {lbl: lbl for lbl in new_options_lines}
-            else:
-                label_to_value_for_old_qvid[qv_id] = {}
 
-            final_existing_qv_ids.append(int(new_qv.question_version_id))
-            qv_id_map[qv_id] = int(new_qv.question_version_id)
-
-        new_prompts = request.form.getlist("new_prompt")
-        new_types = request.form.getlist("new_type")
-        new_requireds = request.form.getlist("new_required")
-        new_helps = request.form.getlist("new_help")
-        new_options_texts = request.form.getlist("new_options")
-
-        created_new_qv_ids = []
-        n = max(len(new_prompts), len(new_types), len(new_requireds), len(new_helps), len(new_options_texts))
-        for i in range(n):
-            prompt = (new_prompts[i] if i < len(new_prompts) else "").strip()
-            rtype = (new_types[i] if i < len(new_types) else "").strip()
-            req = (new_requireds[i] if i < len(new_requireds) else "0").strip()
-            help_text = (new_helps[i] if i < len(new_helps) else "").strip()
-            options_text = (new_options_texts[i] if i < len(new_options_texts) else "") or ""
-
-            if not prompt:
-                continue
-            if rtype not in ("text", "number", "rating", "select", "multi_select"):
-                continue
-
-            q = Question(question_key=uuid.uuid4().hex, created_by=user_id)
-            db.session.add(q)
-            db.session.flush()
-
-            qv = QuestionVersion(
-                question_id=q.question_id,
-                version_number=1,
-                prompt_text=prompt,
-                response_type=rtype,
-                is_required=(req == "1"),
-                help_text=(help_text if help_text else None),
-                is_active=True,
-                created_by=user_id,
-            )
-            db.session.add(qv)
-            db.session.flush()
-
-            if rtype in ("select", "multi_select"):
-                lines = []
-                for line in (options_text or "").splitlines():
-                    t = line.strip()
-                    if t:
-                        lines.append(t)
-                for idx, label in enumerate(lines):
-                    db.session.add(
-                        QuestionVersionOption(
-                            question_version_id=qv.question_version_id,
-                            option_value=label,
-                            option_label=label,
-                            sort_order=idx,
-                        )
-                    )
-
-            created_new_qv_ids.append(int(qv.question_version_id))
-
-        all_qv_ids = final_existing_qv_ids + created_new_qv_ids
+                all_qv_ids.append(int(qv.question_version_id))
+                qv_id_map[key] = int(qv.question_version_id)
 
         new_fv = FormVersion(
             form_id=form_obj.form_id,
             version_number=next_version_number,
+            title=formTitle,
+            description=(formDescription if formDescription else None),
             created_by=user_id,
             notes=None,
         )
         db.session.add(new_fv)
         db.session.flush()
 
-        for idx, qv_id in enumerate(all_qv_ids):
-            db.session.add(
-                FormVersionQuestion(
-                    form_version_id=new_fv.form_version_id,
-                    question_version_id=int(qv_id),
-                    sort_order=idx,
-                )
-            )
-
+        sectionOrder = 0
+        currentSectionId = None
+        sortCounters = {None: 0}
+        sectionIdMap = {}
         all_set = set(int(x) for x in all_qv_ids)
+
+        for item in ordered_items:
+            raw = (item or "").strip()
+            if not raw or ":" not in raw:
+                continue
+            kind, ident = raw.split(":", 1)
+            kind = kind.strip()
+            ident = ident.strip()
+
+            if kind == "section":
+                title = (request.form.get(f"section_title_{ident}") or "").strip()
+                desc = (request.form.get(f"section_desc_{ident}") or "").strip()
+                if not title:
+                    currentSectionId = None
+                    continue
+                sec = FormVersionSection(
+                    form_version_id=new_fv.form_version_id,
+                    title=title,
+                    description=(desc if desc else None),
+                    sort_order=sectionOrder,
+                )
+                db.session.add(sec)
+                db.session.flush()
+                currentSectionId = int(sec.section_id)
+                sectionIdMap[ident] = currentSectionId
+                sortCounters[currentSectionId] = 0
+                sectionOrder += 1
+                continue
+
+            if kind == "existing":
+                if not ident or ident in delete_ids:
+                    continue
+                oldId = int(ident)
+                newId = int(qv_id_map.get(oldId, oldId))
+                if newId not in all_set:
+                    continue
+                so = sortCounters.get(currentSectionId, 0)
+                db.session.add(
+                    FormVersionQuestion(
+                        form_version_id=new_fv.form_version_id,
+                        question_version_id=newId,
+                        section_id=currentSectionId,
+                        sort_order=so,
+                    )
+                )
+                sortCounters[currentSectionId] = so + 1
+                continue
+
+            if kind == "new":
+                key = ident
+                if key not in qv_id_map:
+                    continue
+                newId = int(qv_id_map.get(key))
+                if newId not in all_set:
+                    continue
+                so = sortCounters.get(currentSectionId, 0)
+                db.session.add(
+                    FormVersionQuestion(
+                        form_version_id=new_fv.form_version_id,
+                        question_version_id=newId,
+                        section_id=currentSectionId,
+                        sort_order=so,
+                    )
+                )
+                sortCounters[currentSectionId] = so + 1
+                continue
 
         branch_state_sources = request.form.getlist("branch_state_source")
         branch_state_enableds = request.form.getlist("branch_state_enabled")
@@ -821,11 +1066,14 @@ def editform():
                     priority=int(b.priority or 0),
                 )
             )
+        form_obj.title = formTitle
+        form_obj.description = (formDescription if formDescription else None)
         db.session.commit()
         flash(f"Form updated. New version: {next_version_number}", "success")
         return redirect(url_for("form"))
 
-    questions = _get_questions_for_version(latest_version.form_version_id)
+    unsectioned_questions, sections_with_questions = _get_sections_for_version(latest_version.form_version_id)
+    questions = unsectioned_questions + [q for s in sections_with_questions for q in (s.get("questions") or [])]
 
     value_to_label_by_qvid = {}
     for q in questions:
@@ -867,6 +1115,9 @@ def editform():
         form=form_obj,
         form_version=latest_version,
         questions=questions,
+        unsectioned_questions=unsectioned_questions,
+        sections_with_questions=sections_with_questions,
+        is_developer=(session.get("role_name") == "developer"),
         branch_maps=branch_maps,
     )
 

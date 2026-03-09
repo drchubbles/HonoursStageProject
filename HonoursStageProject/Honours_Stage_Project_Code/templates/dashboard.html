@@ -11,43 +11,21 @@ https://youtu.be/Z1RJmh_OqeA
 {% block content %}
 
 
-<h1>Dashboard</h1>
-<p>Signed in as <strong>{{ session.get("username") }}</strong>.</p>
-<p>Role: <strong>{{ session.get("role_name") }}</strong></p>
-
-<p><a href="{{ url_for('logout') }}">Sign out</a></p>
-
-<h2>Submitted forms</h2>
+<h1>Completed Forms</h1>
 
 {% if submissions and submissions|length > 0 %}
-  <table style="width:100%; border-collapse:collapse;">
-    <thead>
-      <tr>
-        <th style="text-align:left; padding:6px; border-bottom:1px solid #ccc;">Submitted</th>
-        <th style="text-align:left; padding:6px; border-bottom:1px solid #ccc;">Form</th>
-        <th style="text-align:left; padding:6px; border-bottom:1px solid #ccc;">Version</th>
-        {% if is_admin %}
-          <th style="text-align:left; padding:6px; border-bottom:1px solid #ccc;">By</th>
-        {% endif %}
-        <th style="text-align:left; padding:6px; border-bottom:1px solid #ccc;"></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for sub, f, fv, u in submissions %}
-        <tr>
-          <td style="padding:6px; border-bottom:1px solid #eee;">{{ sub.submitted_at }}</td>
-          <td style="padding:6px; border-bottom:1px solid #eee;">{{ f.title }}</td>
-          <td style="padding:6px; border-bottom:1px solid #eee;">{{ fv.version_number }}</td>
-          {% if is_admin %}
-            <td style="padding:6px; border-bottom:1px solid #eee;">{{ u.username }}</td>
-          {% endif %}
-          <td style="padding:6px; border-bottom:1px solid #eee;">
-            <a href="{{ url_for('view_submission', submission_id=sub.submission_id) }}">View form</a>
-          </td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="cards">
+    {% for sub, f, fv, u in submissions %}
+      <div class="card">
+        <p class="card-title">{{ f.title }}</p>
+        <p class="muted">Submitted: {{ sub.submitted_at }}</p>
+        <p class="muted">Version: {{ fv.version_number }}{% if is_admin %} · By: {{ u.username }}{% endif %}</p>
+        <div class="card-footer">
+          <a class="btn" href="{{ url_for('view_submission', submission_id=sub.submission_id) }}">View form</a>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
 {% else %}
   <p>No submitted forms yet.</p>
 {% endif %}

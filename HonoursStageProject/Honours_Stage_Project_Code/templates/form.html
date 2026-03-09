@@ -13,141 +13,174 @@ https://youtu.be/Z1RJmh_OqeA
 {% set view_only = view_only|default(false) %}
 {% set answers = answers|default({}) %}
 
+{% set formTitleVal = form_version.title or form.title if form_version else form.title %}
+{% set formDescVal = (form_version.description if form_version and form_version.description is not none else form.description) %}
+
+{% macro render_question(q) %}
+  {% set ans = answers.get(q.question_version_id) %}
+  {% set hintVal = q.hint_text or q.help_text or '' %}
+  <div id="wrap_{{ q.question_version_id }}" class="questionCard">
+    <div class="qLabel">
+      <span>{{ q.prompt_text }}</span>
+      {% if q.is_required %}<span class="reqStar">*</span>{% endif %}
+    </div>
+
+    {% if q.question_description %}
+      <div class="pageSub" style="margin-top:6px;">{{ q.question_description }}</div>
+    {% endif %}
+
+    {% if q.response_type == "text" %}
+      <div class="qControl">
+        <input
+          type="text"
+          name="q_{{ q.question_version_id }}"
+          id="q_{{ q.question_version_id }}"
+          value="{{ ans.get('text') if ans and ans.get('text') is not none else '' }}"
+          placeholder="{{ hintVal }}"
+          {% if q.is_required and not view_only %}required{% endif %}
+          {% if view_only %}disabled{% endif %}
+          data-required="{% if q.is_required %}1{% else %}0{% endif %}"
+        >
+      </div>
+
+    {% elif q.response_type == "number" %}
+      <div class="qControl">
+        <input
+          type="number"
+          name="q_{{ q.question_version_id }}"
+          id="q_{{ q.question_version_id }}"
+          value="{{ ans.get('number') if ans and ans.get('number') is not none else '' }}"
+          placeholder="{{ hintVal }}"
+          {% if q.is_required and not view_only %}required{% endif %}
+          {% if view_only %}disabled{% endif %}
+          data-required="{% if q.is_required %}1{% else %}0{% endif %}"
+        >
+      </div>
+
+    {% elif q.response_type == "rating" %}
+      <div class="qControl">
+        <input
+          type="number"
+          min="1"
+          max="5"
+          name="q_{{ q.question_version_id }}"
+          id="q_{{ q.question_version_id }}"
+          value="{{ ans.get('number') if ans and ans.get('number') is not none else '' }}"
+          placeholder="{{ hintVal or '1 to 5' }}"
+          {% if q.is_required and not view_only %}required{% endif %}
+          {% if view_only %}disabled{% endif %}
+          data-required="{% if q.is_required %}1{% else %}0{% endif %}"
+        >
+      </div>
+
+    {% elif q.response_type == "select" %}
+      <div class="qControl">
+        <select
+          name="q_{{ q.question_version_id }}"
+          id="q_{{ q.question_version_id }}"
+          {% if q.is_required and not view_only %}required{% endif %}
+          {% if view_only %}disabled{% endif %}
+          data-required="{% if q.is_required %}1{% else %}0{% endif %}"
+        >
+          <option value="">{{ hintVal or 'Select an option' }}</option>
+        {% for opt in q.options %}
+          <option value="{{ opt.option_value }}" {% if ans and ans.get('option') == opt.option_value %}selected{% endif %}>{{ opt.option_label }}</option>
+        {% endfor %}
+        </select>
+      </div>
+
+    {% elif q.response_type == "multi_select" %}
+      <div id="q_{{ q.question_version_id }}" class="checkList">
+        {% for opt in q.options %}
+          <label>
+            <input
+              type="checkbox"
+              name="q_{{ q.question_version_id }}"
+              value="{{ opt.option_value }}"
+              {% if ans and opt.option_value in (ans.get('multi') or []) %}checked{% endif %}
+              {% if view_only %}disabled{% endif %}
+            >
+            {{ opt.option_label }}
+          </label>
+        {% endfor %}
+      </div>
+
+      {% if hintVal %}
+        <div class="helpInline">{{ hintVal }}</div>
+      {% endif %}
+
+    {% else %}
+      <div class="qControl">
+        <input
+          type="text"
+          name="q_{{ q.question_version_id }}"
+          id="q_{{ q.question_version_id }}"
+          value="{{ ans.get('text') if ans and ans.get('text') is not none else '' }}"
+          placeholder="Unsupported question type: {{ q.response_type }}"
+          {% if view_only %}disabled{% endif %}
+        >
+      </div>
+    {% endif %}
+  </div>
+{% endmacro %}
+
 {% if not form %}
   <p>No active form available.</p>
 {% else %}
 
-<h1>{{ form.title }}</h1>
-<p>{{ form.description }}</p>
+<div class="pageShell">
 
-{% if view_only and submission %}
-  <p>
-    Submission: <strong>#{{ submission.submission_id }}</strong>
-    {% if submission.submitted_at %}- {{ submission.submitted_at }}{% endif %}
-  </p>
-{% endif %}
+  <h1 class="pageTitle">{{ formTitleVal }}</h1>
+  <p class="pageSub">{{ formDescVal }}</p>
 
-{% if not view_only %}
-  <div id="pageMeta" data-form-version-id="{{ form_version.form_version_id if form_version else 0 }}"></div>
-{% endif %}
+  {% if view_only and submission %}
+    <p class="pageSub">
+      Submission: <strong>#{{ submission.submission_id }}</strong>
+      {% if submission.submitted_at %}- {{ submission.submitted_at }}{% endif %}
+    </p>
+  {% endif %}
 
-<div style="display:flex; gap:24px; align-items:flex-start;">
+  {% if not view_only %}
+    <div id="pageMeta" data-form-version-id="{{ form_version.form_version_id if form_version else 0 }}"></div>
+  {% endif %}
 
-  <div style="flex:2; min-width:320px;">
+  <div class="formLayout" id="formLayout">
 
+    <div class="formCard">
 
-    {% if session.get("role_name") == "admin" and not view_only %}
-      <div style="margin-bottom:14px;">
-        <a href="{{ url_for('editform') }}"
-           style="display:inline-block; padding:8px 12px; border:1px solid #999; text-decoration:none;">
-          Edit Form
-        </a>
+      <button type="button" class="notesSideTab" id="notesSideTab" onclick="toggleNotes()" aria-label="Show notes" title="Show notes"><span class="notesSideTabText">Notes</span></button>
+
+      <div class="toolbarRow">
+        <div></div>
+        {% if session.get("role_name") in ("admin","developer") and not view_only %}
+          <a class="secondaryButton" href="{{ url_for('editform') }}">Edit form</a>
+        {% endif %}
       </div>
-    {% endif %}
 
-    {% if not view_only %}
-      <form method="POST">
-    {% else %}
-      <div>
-    {% endif %}
+      {% if not view_only %}
+        <form method="POST">
+      {% else %}
+        <div>
+      {% endif %}
 
-      {% for q in questions %}
-        <div id="wrap_{{ q.question_version_id }}" style="margin-bottom:20px;">
-          {% set ans = answers.get(q.question_version_id) %}
-          <label>
-            <strong>{{ q.prompt_text }}</strong>
-            {% if q.is_required %}*{% endif %}
-          </label><br>
+      {% for q in (unsectioned_questions or []) %}
+        {{ render_question(q) }}
+      {% endfor %}
 
-          {% if q.response_type == "text" %}
-            <input
-              type="text"
-              name="q_{{ q.question_version_id }}"
-              id="q_{{ q.question_version_id }}"
-              value="{{ ans.get('text') if ans and ans.get('text') is not none else '' }}"
-              {% if q.is_required and not view_only %}required{% endif %}
-              {% if view_only %}disabled{% endif %}
-              data-required="{% if q.is_required %}1{% else %}0{% endif %}"
-              style="width:100%; padding:8px;"
-            >
-
-          {% elif q.response_type == "number" %}
-            <input
-              type="number"
-              name="q_{{ q.question_version_id }}"
-              id="q_{{ q.question_version_id }}"
-              value="{{ ans.get('number') if ans and ans.get('number') is not none else '' }}"
-              {% if q.is_required and not view_only %}required{% endif %}
-              {% if view_only %}disabled{% endif %}
-              data-required="{% if q.is_required %}1{% else %}0{% endif %}"
-              style="width:100%; padding:8px;"
-            >
-
-          {% elif q.response_type == "rating" %}
-            <input
-              type="number"
-              min="1"
-              max="5"
-              name="q_{{ q.question_version_id }}"
-              id="q_{{ q.question_version_id }}"
-              value="{{ ans.get('number') if ans and ans.get('number') is not none else '' }}"
-              {% if q.is_required and not view_only %}required{% endif %}
-              {% if view_only %}disabled{% endif %}
-              data-required="{% if q.is_required %}1{% else %}0{% endif %}"
-              style="width:100%; padding:8px;"
-            >
-
-          {% elif q.response_type == "select" %}
-            <select
-              name="q_{{ q.question_version_id }}"
-              id="q_{{ q.question_version_id }}"
-              {% if q.is_required and not view_only %}required{% endif %}
-              {% if view_only %}disabled{% endif %}
-              data-required="{% if q.is_required %}1{% else %}0{% endif %}"
-              style="width:100%; padding:8px;"
-            >
-              <option value="">-- Please select --</option>
-              {% for opt in q.options %}
-                <option value="{{ opt.option_value }}" {% if ans and ans.get('option') == opt.option_value %}selected{% endif %}>{{ opt.option_label }}</option>
-              {% endfor %}
-            </select>
-
-          {% elif q.response_type == "multi_select" %}
-            <div id="q_{{ q.question_version_id }}">
-              {% for opt in q.options %}
-                <label style="display:block; margin:4px 0;">
-                  <input
-                    type="checkbox"
-                    name="q_{{ q.question_version_id }}"
-                    value="{{ opt.option_value }}"
-                    {% if ans and opt.option_value in (ans.get('multi') or []) %}checked{% endif %}
-                    {% if view_only %}disabled{% endif %}
-                  >
-                  {{ opt.option_label }}
-                </label>
-              {% endfor %}
-            </div>
-
-          {% else %}
-            <input
-              type="text"
-              name="q_{{ q.question_version_id }}"
-              id="q_{{ q.question_version_id }}"
-              value="{{ ans.get('text') if ans and ans.get('text') is not none else '' }}"
-              placeholder="Unsupported question type: {{ q.response_type }}"
-              {% if view_only %}disabled{% endif %}
-              style="width:100%; padding:8px;"
-            >
-          {% endif %}
-
-          {% if q.help_text %}
-            <small>{{ q.help_text }}</small>
+      {% for item in (sections_with_questions or []) %}
+        <div style="margin-top:18px;">
+          <h2 class="sectionTitle">{{ item.section.title }}</h2>
+          {% if item.section.description %}
+            <p class="pageSub">{{ item.section.description }}</p>
           {% endif %}
         </div>
+        {% for q in (item.questions or []) %}
+          {{ render_question(q) }}
+        {% endfor %}
       {% endfor %}
 
       {% if not view_only %}
-        <button type="submit">Submit</button>
+        <button class="primaryButton" type="submit">Submit</button>
       {% endif %}
 
     {% if not view_only %}
@@ -156,24 +189,29 @@ https://youtu.be/Z1RJmh_OqeA
       </div>
     {% endif %}
 
-  </div>
-
-  <div style="flex:1; min-width:260px; border:1px solid #ccc; padding:12px;">
-    <h3 style="margin-top:0;">Notes (not saved)</h3>
-    <p style="margin-top:-6px;">
-      You can type anything here. This will not be submitted or stored.
-    </p>
-
-    <textarea
-      id="notesBox"
-      placeholder="Write notes here..."
-      style="width:100%; height:320px; padding:10px; resize:vertical;"
-    ></textarea>
-
-    <div style="margin-top:10px;">
-      <button type="button" onclick="clearNotes()">Clear</button>
     </div>
-  </div>
+
+    <aside class="formCard notesPanel" id="notesPanel">
+      <div class="notesHeader">
+        <h3 class="notesTitle">Notes</h3>
+        <button type="button" class="notesToggle" id="notesToggle" onclick="toggleNotes()" aria-label="Hide notes" title="Hide notes">×</button>
+      </div>
+
+      <div class="notesBody" id="notesBody">
+        <p class="muted">Not saved or submitted.</p>
+
+        <textarea
+          id="notesBox"
+          class="notesBox"
+          placeholder="Write notes here..."
+        ></textarea>
+
+        <div style="margin-top:10px; display:flex; gap:10px;">
+          <button type="button" class="secondaryButton" onclick="clearNotes()">Clear</button>
+        </div>
+      </div>
+    </aside>
+</div>
 
 </div>
 
@@ -181,6 +219,22 @@ https://youtu.be/Z1RJmh_OqeA
   function clearNotes() {
     const box = document.getElementById("notesBox");
     if (box) box.value = "";
+  }
+
+  function toggleNotes() {
+    const layout = document.getElementById("formLayout");
+    const toggleBtn = document.getElementById("notesToggle");
+    const sideTab = document.getElementById("notesSideTab");
+    if (!layout || !toggleBtn) return;
+    layout.classList.toggle("isNotesCollapsed");
+    const isCollapsed = layout.classList.contains("isNotesCollapsed");
+    toggleBtn.textContent = "×";
+    toggleBtn.setAttribute("aria-label", "Hide notes");
+    toggleBtn.setAttribute("title", "Hide notes");
+    if (sideTab) {
+      sideTab.setAttribute("aria-label", isCollapsed ? "Show notes" : "Hide notes");
+      sideTab.setAttribute("title", isCollapsed ? "Show notes" : "Hide notes");
+    }
   }
 </script>
 
@@ -233,173 +287,56 @@ https://youtu.be/Z1RJmh_OqeA
     }
 
     if (Array.isArray(val)) {
-      if (rule.operator === "in") {
-        const cmp = String(rule.compare_option_value ?? rule.compare_text ?? "");
-        if (val.includes(cmp)) return true;
-        return val.map(_norm).includes(_norm(cmp));
-      }
-      if (rule.operator === "not_in") {
-        const cmp = String(rule.compare_option_value ?? rule.compare_text ?? "");
-        if (val.includes(cmp)) return false;
-        return !val.map(_norm).includes(_norm(cmp));
-      }
-      if (rule.operator === "equals") {
-        const cmp = String(rule.compare_option_value ?? rule.compare_text ?? "");
-        if (val.length === 1 && val[0] === cmp) return true;
-        return val.length === 1 && _norm(val[0]) === _norm(cmp);
-      }
-      if (rule.operator === "not_equals") {
-        const cmp = String(rule.compare_option_value ?? rule.compare_text ?? "");
-        if (val.length === 1 && val[0] === cmp) return false;
-        return !(val.length === 1 && _norm(val[0]) === _norm(cmp));
-      }
+      const set = val.map(_norm);
+      const cmp = _norm(rule.compare_option_value || rule.compare_text || "");
+      if (rule.operator === "in" || rule.operator === "equals") return set.includes(cmp);
+      if (rule.operator === "not_in" || rule.operator === "not_equals") return !set.includes(cmp);
       return false;
     }
 
-    const s = (val == null) ? "" : String(val);
-    const cmpVal = String(rule.compare_option_value ?? "");
-    const cmpText = String(rule.compare_text ?? "");
-    if (rule.operator === "equals") {
-      return (cmpVal && s === cmpVal) || (cmpText && label === cmpText) || (cmpVal && label === cmpVal);
-    }
-    if (rule.operator === "not_equals") {
-      return !((cmpVal && s === cmpVal) || (cmpText && label === cmpText) || (cmpVal && label === cmpVal));
-    }
-    if (rule.operator === "contains") return s.includes(String(rule.compare_text ?? ""));
+    const v = _norm(val);
+    const cmpVal = _norm(rule.compare_option_value || "");
+    const cmpText = _norm(rule.compare_text || "");
+    const cmp = cmpVal || cmpText;
+
+    if (rule.operator === "equals") return v === cmp;
+    if (rule.operator === "not_equals") return v !== cmp;
+    if (rule.operator === "contains") return v.includes(cmp);
     return false;
   }
 
   function applyBranching() {
-    const wraps = Array.from(document.querySelectorAll('[id^="wrap_"]'));
-    const order = wraps.map(w => Number(String(w.id).replace("wrap_", "")));
-    const idxOf = new Map(order.map((qvid, i) => [qvid, i]));
+    branchingRules.forEach(rule => {
+      const wrap = document.getElementById("wrap_" + rule.target);
+      if (!wrap) return;
 
-    for (const w of wraps) {
-      w.style.display = "";
-    }
-
-    const targetToRules = new Map();
-    for (const r of branchingRules) {
-      if (r.action !== "show") continue;
-      if (!targetToRules.has(r.target)) targetToRules.set(r.target, []);
-      targetToRules.get(r.target).push(r);
-    }
-
-    for (const [target, rules] of targetToRules.entries()) {
-      const wrap = document.getElementById("wrap_" + target);
-      if (!wrap) continue;
-
-      let visible = false;
-
-      rules.sort((a,b)=>Number(a.priority||0)-Number(b.priority||0));
-
-      for (const rule of rules) {
-        if (evalRule(rule)) {
-          visible = true;
-          break;
-        }
+      const shouldShow = evalRule(rule);
+      if (rule.action === "show") {
+        wrap.style.display = shouldShow ? "" : "none";
       }
-
-      wrap.style.display = visible ? "" : "none";
-
-      if (!visible) {
-        const input = document.getElementById("q_" + target);
-        if (input) {
-          if (input.tagName === "DIV") {
-            const boxes = input.querySelectorAll('input[type="checkbox"]');
-            boxes.forEach(cb => cb.checked = false);
-          } else if (input.tagName === "SELECT") {
-            input.value = "";
-          } else {
-            input.value = "";
-          }
-          if (input.tagName !== "DIV") input.required = false;
-        }
-      } else {
-        const input = document.getElementById("q_" + target);
-        if (input && input.tagName !== "DIV") {
-          const req = String(input.getAttribute("data-required") || "0").trim() === "1";
-          input.required = req;
-        }
-      }
-    }
-
-    const gotoBySource = new Map();
-    for (const r of branchingRules) {
-      if (r.action !== "goto") continue;
-      if (!gotoBySource.has(r.source)) gotoBySource.set(r.source, []);
-      gotoBySource.get(r.source).push(r);
-    }
-
-    for (const [source, rules] of gotoBySource.entries()) {
-      const sIdx = idxOf.get(Number(source));
-      if (sIdx == null) continue;
-
-      let chosenTarget = null;
-      rules.sort((a,b)=>Number(a.priority||0)-Number(b.priority||0));
-
-      for (const rule of rules) {
-        if (evalRule(rule)) {
-          chosenTarget = Number(rule.target);
-          break;
-        }
-      }
-
-      if (chosenTarget == null) continue;
-
-      const tIdx = idxOf.get(chosenTarget);
-      if (tIdx == null) continue;
-      if (tIdx <= sIdx) continue;
-
-      for (let i = sIdx + 1; i < tIdx; i++) {
-        const qvid = order[i];
-        const wrap = document.getElementById("wrap_" + qvid);
-        if (!wrap) continue;
-        if (wrap.style.display === "none") continue;
-        wrap.style.display = "none";
-        const input = document.getElementById("q_" + qvid);
-        if (input) {
-          if (input.tagName === "DIV") {
-            const boxes = input.querySelectorAll('input[type="checkbox"]');
-            boxes.forEach(cb => cb.checked = false);
-          } else if (input.tagName === "SELECT") {
-            input.value = "";
-          } else {
-            input.value = "";
-          }
-        }
-      }
-    }
+    });
   }
 
-  function attachBranchingListeners() {
-    const sources = new Set(branchingRules.map(r => r.source));
-    for (const qvid of sources) {
+  function bindChangeHandlers() {
+    const sources = new Set(branchingRules.map(r => String(r.source)));
+    sources.forEach(qvid => {
       const el = document.getElementById("q_" + qvid);
-      if (!el) continue;
-
-      if (el.tagName === "DIV") {
-        const boxes = el.querySelectorAll('input[type="checkbox"]');
-        boxes.forEach(cb => cb.addEventListener("change", applyBranching));
-      } else {
-        el.addEventListener("change", applyBranching);
-        el.addEventListener("input", applyBranching);
-      }
-    }
+      if (!el) return;
+      el.addEventListener("change", applyBranching);
+      el.addEventListener("input", applyBranching);
+    });
   }
 
   async function loadBranching() {
     if (!formVersionId) return;
-    const res = await fetch(`/api/branching/${formVersionId}`);
-    if (!res.ok) return;
-    branchingRules = await res.json();
-    attachBranchingListeners();
+    const resp = await fetch(`/api/branching/${formVersionId}`);
+    if (!resp.ok) return;
+    branchingRules = await resp.json();
+    bindChangeHandlers();
     applyBranching();
   }
 
-  document.addEventListener("DOMContentLoaded", function() {
-    loadBranching();
-  });
+  document.addEventListener("DOMContentLoaded", loadBranching);
 </script>
 
 {% endif %}

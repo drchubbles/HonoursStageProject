@@ -16,19 +16,49 @@ This code allows for reduced redundancies in repaaring code and allows fro each 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Review System{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <style>
+    :root {
+      --backgroundColor: {{ themeBackgroundColor }};
+      --buttonColor: {{ themeButtonColor }};
+      --buttonTextColor: {{ themeButtonTextColor }};
+    }
+  </style>
 </head>
 
 <body>
 
   {% block navbar %}
   <header>
-    <nav>
-      <a href="{{ url_for('dashboard') }}">Dashboard</a>
-      <a href="{{ url_for('form') }}">Form</a>
+    <nav class="topnav">
+      <div class="nav-left">
+        <a class="brand" href="{{ url_for('dashboard') }}" aria-label="Home">
+          <img src="{{ siteLogoUrl }}" alt="Logo" class="brand-logo">
+        </a>
 
-      {% if session.get("role_name") == "admin" %}
-        <a href="{{ url_for('stats') }}">Stats</a>
-      {% endif %}
+        <div class="tabs">
+          <a class="tab {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
+          <a class="tab {% if request.endpoint == 'form' %}active{% endif %}" href="{{ url_for('form') }}">Form</a>
+          {% if session.get("role_name") == "admin" %}
+            <a class="tab {% if request.endpoint == 'stats' %}active{% endif %}" href="{{ url_for('stats') }}">Stats</a>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="nav-right">
+        {% if session.get("username") %}
+          <div class="user-chip">
+<div class="user-text">Welcome <strong>{{ session.get("username") }}</strong></div>
+          </div>
+        {% endif %}
+
+        {% if session.get("role_name") == "admin" %}
+          <a class="link" href="{{ url_for('branding') }}">Branding</a>
+        {% endif %}
+
+        {% if session.get("username") %}
+          <a class="link" href="{{ url_for('logout') }}">Sign out</a>
+        {% endif %}
+      </div>
     </nav>
   </header>
   {% endblock %}

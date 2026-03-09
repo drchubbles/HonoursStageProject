@@ -10,119 +10,284 @@ https://youtu.be/Z1RJmh_OqeA
 
 {% block content %}
 
-<h1>Edit Form</h1>
+{% set formTitleVal = form_version.title or form.title %}
+{% set formDescVal = form_version.description if form_version.description is not none else form.description %}
 
-<h2>{{ form.title }}</h2>
-<p>{{ form.description }}</p>
-<p>Current version: {{ form_version.version_number }}</p>
+<div class="pageShell editShell">
+
+  <h1 class="pageTitle">Edit form</h1>
+  <p class="pageSub"><strong>{{ formTitleVal }}</strong> · Version {{ form_version.version_number }}</p>
+  <p class="pageSub">{{ formDescVal }}</p>
 
 <style>
   .branchWrap { margin-top:10px; padding:10px; border:1px solid #ddd; }
   .branchRow { display:flex; gap:10px; align-items:center; margin-top:8px; }
-  .qmetaLine { display:flex; gap:8px; align-items:center; margin:6px 0 10px 0; font-size:13px; }
+  .qmetaLine { display:flex; gap:8px; align-items:center; margin:6px 0 10px 0; font-size:13px; flex-wrap:wrap; }
   .badge { display:inline-flex; align-items:center; padding:2px 8px; border:1px solid #ddd; background:#fff; }
   .badgeStrong { font-weight:700; }
+  .dragHandle { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:grab; user-select:none; }
+  .dragHandle:active { cursor:grabbing; }
+  .sectionRow { background:#fafafa; }
 </style>
 
-<form method="POST" id="editForm">
+  <form method="POST" id="editForm">
 
-  <h3>Existing questions</h3>
-  <p>Use ^ and v to change order. Edit fields to reword. Tick Delete to remove from the next version.</p>
+    <h2 class="sectionTitle">Form details</h2>
 
-  <div id="existingList">
-    {% for q in questions %}
-      <div class="qrow">
+    <div class="formCard" style="margin-bottom:16px;">
+      <div style="display:grid; gap:10px;">
         <div>
-          <button type="button" onclick="moveUp(this)">^</button>
-          <button type="button" onclick="moveDown(this)">v</button>
+          <label>Form title</label><br>
+          <input type="text" name="form_title" value="{{ formTitleVal }}" required>
         </div>
-
         <div>
-          <input type="hidden" name="existing_qv_id" value="{{ q.question_version_id }}">
-
-          <div class="qmetaLine">
-            <span class="badge badgeStrong qNum"></span>
-            <span class="badge qType" id="typeBadge_{{ q.question_version_id }}"></span>
-            <span class="badge qBranch" id="branchBadge_{{ q.question_version_id }}"></span>
-          </div>
-
-          <div>
-            <label>Prompt</label><br>
-            <input type="text" name="existing_prompt_{{ q.question_version_id }}" value="{{ q.prompt_text }}" required>
-          </div>
-
-          <div>
-            <label>Type</label><br>
-            <select name="existing_type_{{ q.question_version_id }}" onchange="toggleExistingOptions(this)" data-qvid="{{ q.question_version_id }}">
-              <option value="text" {% if q.response_type == "text" %}selected{% endif %}>text</option>
-              <option value="number" {% if q.response_type == "number" %}selected{% endif %}>number</option>
-              <option value="rating" {% if q.response_type == "rating" %}selected{% endif %}>rating</option>
-              <option value="select" {% if q.response_type in ("select", "multi_select") %}selected{% endif %}>select</option>
-                          <option value="multi_select" {% if q.response_type == "multi_select" %}selected{% endif %}>multi_select</option>
-            </select>
-          </div>
-
-          <div>
-            <label>Required</label><br>
-            <select name="existing_required_{{ q.question_version_id }}">
-              <option value="0" {% if not q.is_required %}selected{% endif %}>No</option>
-              <option value="1" {% if q.is_required %}selected{% endif %}>Yes</option>
-            </select>
-          </div>
-
-          <div>
-            <label>Help text (optional)</label><br>
-            <input type="text" name="existing_help_{{ q.question_version_id }}" value="{{ q.help_text or '' }}">
-          </div>
-
-          <div class="existingOptionsBlock" id="existingOptions_{{ q.question_version_id }}" {% if q.response_type not in ("select", "multi_select") %}style="display:none;"{% endif %}>
-            <label>Options (one per line)</label><br>
-            <textarea name="existing_options_{{ q.question_version_id }}" rows="5">{% if q.response_type == "select" %}{% for opt in q.options %}{{ opt.option_label }}{% if not loop.last %}{{ "\n" }}{% endif %}{% endfor %}{% endif %}</textarea>
-          </div>
-
-          <div id="branchWrap_{{ q.question_version_id }}" class="branchWrap" {% if q.response_type != "select" %}style="display:none;"{% endif %}>
-            <label>
-              <input type="checkbox" class="branchToggle" data-qvid="{{ q.question_version_id }}" {% if branch_maps and (q.question_version_id in branch_maps) %}checked{% endif %}>
-              Branching
-            </label>
-            <input type="hidden" name="branch_state_source" value="{{ q.question_version_id }}">
-            <input type="hidden" name="branch_state_enabled" value="{% if branch_maps and (q.question_version_id in branch_maps) %}1{% else %}0{% endif %}" class="branchState" data-qvid="{{ q.question_version_id }}">
-            <div class="branchPanel" id="branchPanel_{{ q.question_version_id }}" data-branch='{{ (branch_maps.get(q.question_version_id) or {})|tojson }}' style="display:{% if branch_maps and (q.question_version_id in branch_maps) %}block{% else %}none{% endif %};"></div>
-          </div>
-
-          <textarea name="existing_options_{{ q.question_version_id }}" class="existingOptionsHidden" id="existingOptionsHidden_{{ q.question_version_id }}" style="display:none;" rows="1" {% if q.response_type in ("select", "multi_select") %}disabled{% endif %}></textarea>
+          <label>Form description</label><br>
+          <textarea name="form_description" rows="3">{{ formDescVal or '' }}</textarea>
         </div>
-
-        <label>
-          <input type="checkbox" name="delete_qv_id" value="{{ q.question_version_id }}">
-          Delete
-        </label>
       </div>
-    {% endfor %}
-  </div>
+    </div>
 
-  <h3>Add new questions</h3>
+    <h2 class="sectionTitle">Layout</h2>
+    <p class="pageSub">Add sections to group related questions. Drag to reorder. Save creates a new version.</p>
 
-  <div id="newQuestions"></div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+      <button class="secondaryButton" type="button" onclick="addSection()">+ Add section</button>
+      <button class="secondaryButton" type="button" onclick="addNewQuestion()">+ Add question</button>
+    </div>
 
-  <button type="button" onclick="addNewQuestion()">+ Add Question</button>
+    <div id="questionsList">
 
-  <div style="margin-top:14px;">
-    <button type="submit">Save as New Version</button>
-    <a href="{{ url_for('form') }}">Cancel</a>
-  </div>
+      {% for q in (unsectioned_questions or []) %}
+        {% set locked = q.is_locked %}
+        {% set can_edit = (is_developer or (not locked)) %}
+        <div class="qrow" data-kind="existing" data-qvid="{{ q.question_version_id }}">
+          <input type="hidden" name="ordered_item" value="existing:{{ q.question_version_id }}">
+          <div>
+            <span class="dragHandle" aria-label="Drag to reorder" title="Drag to reorder">☰</span>
+          </div>
 
-</form>
+          <div>
+            <div class="qmetaLine">
+              <span class="badge badgeStrong qNum"></span>
+              {% if locked %}<span class="badge badgeStrong">Locked</span>{% endif %}
+            </div>
 
+            <div>
+              <label>Prompt</label><br>
+              <input type="text" name="existing_prompt_{{ q.question_version_id }}" value="{{ q.prompt_text }}" required {% if not can_edit %}disabled{% endif %}>
+            </div>
+
+            <div>
+              <label>Type</label><br>
+              <select name="existing_type_{{ q.question_version_id }}" onchange="toggleExistingOptions(this)" data-qvid="{{ q.question_version_id }}" {% if not can_edit %}disabled{% endif %}>
+                <option value="text" {% if q.response_type == "text" %}selected{% endif %}>text</option>
+                <option value="number" {% if q.response_type == "number" %}selected{% endif %}>number</option>
+                <option value="rating" {% if q.response_type == "rating" %}selected{% endif %}>rating</option>
+                <option value="select" {% if q.response_type == "select" %}selected{% endif %}>select</option>
+                <option value="multi_select" {% if q.response_type == "multi_select" %}selected{% endif %}>multi_select</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Required</label><br>
+              <select name="existing_required_{{ q.question_version_id }}" {% if not can_edit %}disabled{% endif %}>
+                <option value="0" {% if not q.is_required %}selected{% endif %}>No</option>
+                <option value="1" {% if q.is_required %}selected{% endif %}>Yes</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Hint text (optional)</label><br>
+              <input type="text" name="existing_hint_{{ q.question_version_id }}" value="{{ q.hint_text or q.help_text or '' }}" placeholder="Shown as hint text" {% if not can_edit %}disabled{% endif %}>
+            </div>
+
+            <div>
+              <label>Description (optional)</label><br>
+              <textarea name="existing_desc_{{ q.question_version_id }}" rows="2" {% if not can_edit %}disabled{% endif %}>{{ q.question_description or '' }}</textarea>
+            </div>
+
+            {% if is_developer %}
+              <div style="margin-top:8px;">
+                <label style="display:flex; align-items:center; gap:10px;">
+                  <input type="checkbox" name="existing_locked_{{ q.question_version_id }}" value="1" {% if locked %}checked{% endif %}>
+                  Lock question
+                </label>
+              </div>
+            {% endif %}
+
+            <div class="existingOptionsBlock" id="existingOptions_{{ q.question_version_id }}" {% if q.response_type not in ("select", "multi_select") %}style="display:none;"{% endif %}>
+              <label>Options (one per line)</label><br>
+              <textarea name="existing_options_{{ q.question_version_id }}" rows="5" {% if not can_edit %}disabled{% endif %}>{% if q.response_type in ("select","multi_select") %}{% for opt in q.options %}{{ opt.option_label }}{% if not loop.last %}{{ "\n" }}{% endif %}{% endfor %}{% endif %}</textarea>
+            </div>
+
+            <div id="branchWrap_{{ q.question_version_id }}" class="branchWrap" {% if q.response_type != "select" %}style="display:none;"{% endif %}>
+              <label>
+                <input type="checkbox" class="branchToggle" data-qvid="{{ q.question_version_id }}" {% if branch_maps and (q.question_version_id in branch_maps) %}checked{% endif %} {% if not can_edit %}disabled{% endif %}>
+                Branching
+              </label>
+              <input type="hidden" name="branch_state_source" value="{{ q.question_version_id }}">
+              <input type="hidden" name="branch_state_enabled" value="{% if branch_maps and (q.question_version_id in branch_maps) %}1{% else %}0{% endif %}" class="branchState" data-qvid="{{ q.question_version_id }}">
+              <div class="branchPanel" id="branchPanel_{{ q.question_version_id }}" data-branch='{{ (branch_maps.get(q.question_version_id) or {})|tojson }}' style="display:{% if branch_maps and (q.question_version_id in branch_maps) %}block{% else %}none{% endif %};"></div>
+            </div>
+
+          </div>
+
+          <label style="display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" name="delete_qv_id" value="{{ q.question_version_id }}" {% if not can_edit %}disabled{% endif %}>
+            Delete
+          </label>
+        </div>
+      {% endfor %}
+
+      {% for item in (sections_with_questions or []) %}
+        {% set s = item.section %}
+        <div class="qrow sectionRow" data-kind="section" data-sectionkey="{{ s.section_id }}">
+          <input type="hidden" name="ordered_item" value="section:{{ s.section_id }}">
+          <div>
+            <span class="dragHandle" aria-label="Drag to reorder" title="Drag to reorder">☰</span>
+          </div>
+          <div style="width:100%;">
+            <div class="qmetaLine">
+              <span class="badge badgeStrong">Section</span>
+            </div>
+            <div>
+              <label>Section title</label><br>
+              <input type="text" name="section_title_{{ s.section_id }}" value="{{ s.title }}" required>
+            </div>
+            <div>
+              <label>Section description (optional)</label><br>
+              <textarea name="section_desc_{{ s.section_id }}" rows="2">{{ s.description or '' }}</textarea>
+            </div>
+            <div style="margin-top:8px;">
+              <button type="button" onclick="this.closest('.sectionRow').remove()">Remove section</button>
+            </div>
+          </div>
+          <div></div>
+        </div>
+
+        {% for q in (item.questions or []) %}
+          {% set locked = q.is_locked %}
+          {% set can_edit = (is_developer or (not locked)) %}
+          <div class="qrow" data-kind="existing" data-qvid="{{ q.question_version_id }}">
+            <input type="hidden" name="ordered_item" value="existing:{{ q.question_version_id }}">
+            <div>
+              <span class="dragHandle" aria-label="Drag to reorder" title="Drag to reorder">☰</span>
+            </div>
+
+            <div>
+              <div class="qmetaLine">
+                <span class="badge badgeStrong qNum"></span>
+                {% if locked %}<span class="badge badgeStrong">Locked</span>{% endif %}
+              </div>
+
+              <div>
+                <label>Prompt</label><br>
+                <input type="text" name="existing_prompt_{{ q.question_version_id }}" value="{{ q.prompt_text }}" required {% if not can_edit %}disabled{% endif %}>
+              </div>
+
+              <div>
+                <label>Type</label><br>
+                <select name="existing_type_{{ q.question_version_id }}" onchange="toggleExistingOptions(this)" data-qvid="{{ q.question_version_id }}" {% if not can_edit %}disabled{% endif %}>
+                  <option value="text" {% if q.response_type == "text" %}selected{% endif %}>text</option>
+                  <option value="number" {% if q.response_type == "number" %}selected{% endif %}>number</option>
+                  <option value="rating" {% if q.response_type == "rating" %}selected{% endif %}>rating</option>
+                  <option value="select" {% if q.response_type == "select" %}selected{% endif %}>select</option>
+                  <option value="multi_select" {% if q.response_type == "multi_select" %}selected{% endif %}>multi_select</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Required</label><br>
+                <select name="existing_required_{{ q.question_version_id }}" {% if not can_edit %}disabled{% endif %}>
+                  <option value="0" {% if not q.is_required %}selected{% endif %}>No</option>
+                  <option value="1" {% if q.is_required %}selected{% endif %}>Yes</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Hint text (optional)</label><br>
+                <input type="text" name="existing_hint_{{ q.question_version_id }}" value="{{ q.hint_text or q.help_text or '' }}" placeholder="Shown as hint text" {% if not can_edit %}disabled{% endif %}>
+              </div>
+
+              <div>
+                <label>Description (optional)</label><br>
+                <textarea name="existing_desc_{{ q.question_version_id }}" rows="2" {% if not can_edit %}disabled{% endif %}>{{ q.question_description or '' }}</textarea>
+              </div>
+
+              {% if is_developer %}
+                <div style="margin-top:8px;">
+                  <label style="display:flex; align-items:center; gap:10px;">
+                    <input type="checkbox" name="existing_locked_{{ q.question_version_id }}" value="1" {% if locked %}checked{% endif %}>
+                    Lock question
+                  </label>
+                </div>
+              {% endif %}
+
+              <div class="existingOptionsBlock" id="existingOptions_{{ q.question_version_id }}" {% if q.response_type not in ("select", "multi_select") %}style="display:none;"{% endif %}>
+                <label>Options (one per line)</label><br>
+                <textarea name="existing_options_{{ q.question_version_id }}" rows="5" {% if not can_edit %}disabled{% endif %}>{% if q.response_type in ("select","multi_select") %}{% for opt in q.options %}{{ opt.option_label }}{% if not loop.last %}{{ "\n" }}{% endif %}{% endfor %}{% endif %}</textarea>
+              </div>
+
+              <div id="branchWrap_{{ q.question_version_id }}" class="branchWrap" {% if q.response_type != "select" %}style="display:none;"{% endif %}>
+                <label>
+                  <input type="checkbox" class="branchToggle" data-qvid="{{ q.question_version_id }}" {% if branch_maps and (q.question_version_id in branch_maps) %}checked{% endif %} {% if not can_edit %}disabled{% endif %}>
+                  Branching
+                </label>
+                <input type="hidden" name="branch_state_source" value="{{ q.question_version_id }}">
+                <input type="hidden" name="branch_state_enabled" value="{% if branch_maps and (q.question_version_id in branch_maps) %}1{% else %}0{% endif %}" class="branchState" data-qvid="{{ q.question_version_id }}">
+                <div class="branchPanel" id="branchPanel_{{ q.question_version_id }}" data-branch='{{ (branch_maps.get(q.question_version_id) or {})|tojson }}' style="display:{% if branch_maps and (q.question_version_id in branch_maps) %}block{% else %}none{% endif %};"></div>
+              </div>
+
+            </div>
+
+            <label style="display:flex; align-items:center; gap:10px;">
+              <input type="checkbox" name="delete_qv_id" value="{{ q.question_version_id }}" {% if not can_edit %}disabled{% endif %}>
+              Delete
+            </label>
+          </div>
+        {% endfor %}
+      {% endfor %}
+
+    </div>
+
+    <div class="editActions">
+      <button class="primaryButton" type="submit">Save as new version</button>
+      <a class="secondaryButton" href="{{ url_for('form') }}">Cancel</a>
+    </div>
+
+  </form>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script>
-  // NEW: support for "+ Add Question"
+  const isDeveloper = {{ 'true' if is_developer else 'false' }};
   let newQuestionIndex = 0;
+  let newSectionIndex = 0;
+
+  function toggleExistingOptions(sel) {
+    const qvid = sel.dataset.qvid;
+    const block = document.getElementById("existingOptions_" + qvid);
+    if (!block) return;
+    if (sel.value === "select" || sel.value === "multi_select") {
+      block.style.display = "block";
+    } else {
+      block.style.display = "none";
+      const ta = block.querySelector("textarea");
+      if (ta) ta.value = "";
+    }
+
+    const wrap = document.getElementById("branchWrap_" + qvid);
+    if (wrap) {
+      wrap.style.display = (sel.value === "select") ? "block" : "none";
+    }
+  }
 
   function toggleNewOptions(sel) {
     const row = sel.closest(".newQRow");
     if (!row) return;
     const block = row.querySelector(".newOptionsBlock");
-    const ta = row.querySelector('textarea[name="new_options"]');
+    const ta = row.querySelector(".newOptionsBlock textarea");
 
     if (sel.value === "select" || sel.value === "multi_select") {
       if (block) block.style.display = "block";
@@ -136,27 +301,80 @@ https://youtu.be/Z1RJmh_OqeA
     }
   }
 
+  function addSection() {
+    const container = document.getElementById("questionsList");
+    if (!container) return;
+
+    newSectionIndex += 1;
+    const key = "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + "_" + newSectionIndex;
+
+    const row = document.createElement("div");
+    row.className = "qrow sectionRow";
+    row.dataset.kind = "section";
+    row.dataset.sectionkey = key;
+    row.innerHTML = `
+      <input type="hidden" name="ordered_item" value="section:${key}">
+      <div><span class="dragHandle" aria-label="Drag to reorder" title="Drag to reorder">☰</span></div>
+      <div style="width:100%;">
+        <div class="qmetaLine">
+          <span class="badge badgeStrong">Section</span>
+        </div>
+        <div>
+          <label>Section title</label><br>
+          <input type="text" name="section_title_${key}" required>
+        </div>
+        <div>
+          <label>Section description (optional)</label><br>
+          <textarea name="section_desc_${key}" rows="2"></textarea>
+        </div>
+        <div style="margin-top:8px;">
+          <button type="button" onclick="this.closest('.sectionRow').remove()">Remove section</button>
+        </div>
+      </div>
+      <div></div>
+    `;
+
+    container.appendChild(row);
+    refreshQuestionNumbers();
+  }
+
   function addNewQuestion() {
-    const container = document.getElementById("newQuestions");
+    const container = document.getElementById("questionsList");
     if (!container) return;
 
     newQuestionIndex += 1;
+    const key = "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + "_" + newQuestionIndex;
+
+    const lockBlock = isDeveloper ? `
+      <div style="margin-top:8px;">
+        <label style="display:flex; align-items:center; gap:10px;">
+          <input type="checkbox" name="new_locked_${key}" value="1">
+          Lock question
+        </label>
+      </div>` : ``;
 
     const row = document.createElement("div");
     row.className = "qrow newQRow";
+    row.dataset.kind = "new";
+    row.dataset.newkey = key;
     row.innerHTML = `
-      <div class="qmetaLine">
-        <span class="badge badgeStrong">New</span>
+      <input type="hidden" name="ordered_item" value="new:${key}">
+      <div style="display:flex; gap:10px; align-items:center;">
+        <span class="dragHandle" aria-label="Drag to reorder" title="Drag to reorder">☰</span>
+        <div class="qmetaLine" style="margin:0;">
+          <span class="badge badgeStrong qNum"></span>
+          <span class="badge badgeStrong">New</span>
+        </div>
       </div>
 
       <div>
         <label>Prompt</label><br>
-        <input type="text" name="new_prompt" required>
+        <input type="text" name="new_prompt_${key}" required>
       </div>
 
       <div>
         <label>Type</label><br>
-        <select name="new_type" onchange="toggleNewOptions(this)">
+        <select name="new_type_${key}" onchange="toggleNewOptions(this)">
           <option value="text">text</option>
           <option value="number">number</option>
           <option value="rating">rating</option>
@@ -167,30 +385,67 @@ https://youtu.be/Z1RJmh_OqeA
 
       <div>
         <label>Required</label><br>
-        <select name="new_required">
+        <select name="new_required_${key}">
           <option value="0" selected>No</option>
           <option value="1">Yes</option>
         </select>
       </div>
 
       <div>
-        <label>Help text (optional)</label><br>
-        <input type="text" name="new_help">
+        <label>Hint text (optional)</label><br>
+        <input type="text" name="new_hint_${key}">
       </div>
+
+      <div>
+        <label>Description (optional)</label><br>
+        <textarea name="new_desc_${key}" rows="2"></textarea>
+      </div>
+
+      ${lockBlock}
 
       <div class="newOptionsBlock" style="display:none;">
         <label>Options (one per line)</label><br>
-        <textarea name="new_options" rows="5" disabled></textarea>
+        <textarea name="new_options_${key}" rows="5" disabled></textarea>
       </div>
 
       <div style="margin-top:8px;">
-        <button type="button" onclick="this.closest('.newQRow').remove()">Remove</button>
+        <button type="button" onclick="this.closest('.newQRow').remove(); refreshQuestionNumbers();">Remove</button>
       </div>
     `;
 
     container.appendChild(row);
+    refreshQuestionNumbers();
   }
 
+  function refreshQuestionNumbers() {
+    const list = document.getElementById("questionsList");
+    if (!list) return;
+    const rows = Array.from(list.querySelectorAll(".qrow"));
+    let i = 1;
+    rows.forEach((row) => {
+      if (row.dataset.kind !== "existing" && row.dataset.kind !== "new") return;
+      const numEl = row.querySelector(".qNum");
+      if (numEl) numEl.textContent = `Q${i}`;
+      i += 1;
+    });
+  }
+
+  const questionsList = document.getElementById("questionsList");
+  if (questionsList) {
+    new Sortable(questionsList, {
+      animation: 150,
+      handle: ".dragHandle",
+      ghostClass: "sortableGhost",
+      onSort: function () {
+        refreshQuestionNumbers();
+      }
+    });
+  }
+
+  refreshQuestionNumbers();
+</script>
+
+<script>
   function safeParseJson(s) {
     try {
       return JSON.parse(s);
@@ -199,273 +454,114 @@ https://youtu.be/Z1RJmh_OqeA
     }
   }
 
-  function typeLabel(v) {
-    const map = { text: "Text", number: "Number", rating: "Rating", select: "Select", multi_select: "Multi-select" };
-    return map[v] || v || "";
+  function ensureHidden(name, value) {
+    const f = document.getElementById("editForm");
+    if (!f) return;
+    const i = document.createElement("input");
+    i.type = "hidden";
+    i.name = name;
+    i.value = value;
+    f.appendChild(i);
   }
 
-  function updateBranchBadge(qvid) {
-    const badge = document.getElementById("branchBadge_" + qvid);
-    if (!badge) return;
-
-    const wrap = document.getElementById("branchWrap_" + qvid);
-    const toggle = wrap ? wrap.querySelector(".branchToggle") : null;
-    const panel = document.getElementById("branchPanel_" + qvid);
-    const typeSel = document.querySelector(`select[name="existing_type_${qvid}"]`);
-
-    if (!typeSel || typeSel.value !== "select") {
-      badge.textContent = "No branching";
-      return;
-    }
-
-    if (!toggle || !toggle.checked || !panel) {
-      badge.textContent = "No branching";
-      return;
-    }
-
-    const rows = Array.from(panel.querySelectorAll('.branchRow'));
-    const active = rows.filter(r => {
-      const tgt = r.querySelector('select[name="branch_map_target"]');
-      return tgt && String(tgt.value || '').trim() !== '';
-    });
-
-    badge.textContent = active.length ? `Branching: ${active.length} path(s)` : "Branching on";
-  }
-
-  function refreshMeta() {
-    const list = document.getElementById("existingList");
-    if (!list) return;
-    const rows = Array.from(list.querySelectorAll(".qrow"));
-    rows.forEach((row, idx) => {
-      const qvidEl = row.querySelector('input[name="existing_qv_id"]');
-      if (!qvidEl) return;
-      const qvid = String(qvidEl.value || "").trim();
-      const numEl = row.querySelector(".qNum");
-      if (numEl) numEl.textContent = `Q${idx + 1}`;
-      const typeSel = row.querySelector(`select[name="existing_type_${qvid}"]`);
-      const typeBadge = document.getElementById("typeBadge_" + qvid);
-      if (typeBadge && typeSel) typeBadge.textContent = typeLabel(typeSel.value);
-      updateBranchBadge(qvid);
+  function ensureBranchHiddenFields() {
+    document.querySelectorAll(".branchState").forEach((h) => {
+      ensureHidden("branch_state_source", h.dataset.qvid || "");
+      ensureHidden("branch_state_enabled", h.value || "0");
     });
   }
 
-  function moveUp(btn) {
-    const row = btn.closest(".qrow");
-    const list = document.getElementById("existingList");
-    const rows = Array.from(list.querySelectorAll(".qrow"));
-    const idx = rows.indexOf(row);
-    if (idx > 0) {
-      list.insertBefore(row, rows[idx - 1]);
-    }
-    document.querySelectorAll(".branchToggle").forEach(t => { if (t.checked) rebuildBranchPanel(t.getAttribute("data-qvid")); });
-    refreshMeta();
+  function buildBranchRow(sourceQvid, optLabel, targetQvid, questions) {
+    const row = document.createElement("div");
+    row.className = "branchRow";
+
+    const selOpt = document.createElement("select");
+    selOpt.name = "branch_map_option";
+
+    const selTgt = document.createElement("select");
+    selTgt.name = "branch_map_target";
+
+    selOpt.appendChild(new Option("Select option", ""));
+    const q = questions.find(x => String(x.id) === String(sourceQvid));
+    const opts = (q && q.options) ? q.options : [];
+    opts.forEach(o => selOpt.appendChild(new Option(o, o)));
+
+    selTgt.appendChild(new Option("Show question", ""));
+    questions.forEach(q2 => selTgt.appendChild(new Option(q2.label, q2.id)));
+
+    if (optLabel) selOpt.value = optLabel;
+    if (targetQvid) selTgt.value = String(targetQvid);
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.textContent = "Remove";
+    del.onclick = () => row.remove();
+
+    row.appendChild(selOpt);
+    row.appendChild(selTgt);
+    row.appendChild(del);
+
+    ensureHidden("branch_map_source", String(sourceQvid));
+    return row;
   }
 
-  function moveDown(btn) {
-    const row = btn.closest(".qrow");
-    const list = document.getElementById("existingList");
-    const rows = Array.from(list.querySelectorAll(".qrow"));
-    const idx = rows.indexOf(row);
-    if (idx >= 0 && idx < rows.length - 1) {
-      list.insertBefore(rows[idx + 1], row);
-    }
-    document.querySelectorAll(".branchToggle").forEach(t => { if (t.checked) rebuildBranchPanel(t.getAttribute("data-qvid")); });
-    refreshMeta();
-  }
+  function initBranchingPanels() {
+    const panels = document.querySelectorAll(".branchPanel");
+    panels.forEach(panel => {
+      const qvid = panel.id.replace("branchPanel_", "");
+      const state = safeParseJson(panel.dataset.branch || "{}") || {};
+      const questions = Array.from(document.querySelectorAll('.qrow[data-kind="existing"]'))
+        .map(r => {
+          const id = r.dataset.qvid;
+          const prompt = r.querySelector(`input[name="existing_prompt_${id}"]`)?.value || `Q${id}`;
+          const typeSel = r.querySelector(`select[name="existing_type_${id}"]`);
+          const type = typeSel ? typeSel.value : "text";
+          const optionsTa = r.querySelector(`textarea[name="existing_options_${id}"]`);
+          const opts = (type === "select" && optionsTa) ? optionsTa.value.split("\n").map(x => x.trim()).filter(Boolean) : [];
+          return { id: id, label: prompt, type: type, options: opts };
+        });
 
-  function toggleExistingOptions(sel) {
-    const qvid = sel.getAttribute("data-qvid");
-    const block = document.getElementById("existingOptions_" + qvid);
-    const hidden = document.getElementById("existingOptionsHidden_" + qvid);
-    const branchWrap = document.getElementById("branchWrap_" + qvid);
-    const branchPanel = document.getElementById("branchPanel_" + qvid);
-    const branchToggle = branchWrap ? branchWrap.querySelector(".branchToggle") : null;
-    const stateEl = document.querySelector(`input.branchState[data-qvid="${qvid}"]`);
-    const ta = block ? block.querySelector("textarea") : null;
-
-    const isChoiceType = (sel.value === "select" || sel.value === "multi_select");
-    const isBranchable = (sel.value === "select");
-
-    if (isChoiceType) {
-      if (block) block.style.display = "block";
-      if (ta) ta.disabled = false;
-      if (hidden) hidden.disabled = true;
-    } else {
-      if (block) block.style.display = "none";
-      if (ta) {
-        ta.disabled = true;
-        ta.value = "";
-      }
-      if (hidden) hidden.disabled = false;
-    }
-
-    if (branchWrap) {
-      branchWrap.style.display = isBranchable ? "block" : "none";
-    }
-
-    if (!isBranchable) {
-      if (stateEl) stateEl.value = "0";
-      if (branchToggle) branchToggle.checked = false;
-      if (branchPanel) {
-        branchPanel.style.display = "none";
-        branchPanel.innerHTML = "";
-      }
-    }
-
-    refreshMeta();
-  }
-
-function getExistingRowsInOrder() {
-    const list = document.getElementById("existingList");
-    if (!list) return [];
-    const rows = Array.from(list.querySelectorAll(".qrow"));
-    return rows;
-  }
-
-  function getQuestionTargets(currentQvid) {
-    const rows = getExistingRowsInOrder();
-    const targets = [];
-    rows.forEach((row, idx) => {
-      const hidden = row.querySelector('input[name="existing_qv_id"]');
-      if (!hidden) return;
-      const qvid = String(hidden.value || "").trim();
-      if (!qvid) return;
-      if (qvid === String(currentQvid)) return;
-      const del = row.querySelector('input[type="checkbox"][name="delete_qv_id"]');
-      if (del && del.checked) return;
-      const prompt = row.querySelector(`input[name="existing_prompt_${qvid}"]`);
-      const label = prompt ? (prompt.value || "").trim() : "";
-      targets.push({ value: qvid, text: `Q${idx + 1}: ${label || "Untitled"}` });
-    });
-    return targets;
-  }
-
-  function getOptionLinesForQvid(qvid) {
-    const block = document.getElementById("existingOptions_" + qvid);
-    const ta = block ? block.querySelector("textarea") : null;
-    const lines = [];
-    if (!ta) return lines;
-    (ta.value || "").split(/\r?\n/).forEach(l => {
-      const t = String(l || "").trim();
-      if (t) lines.push(t);
-    });
-    return lines;
-  }
-
-  function rebuildBranchPanel(qvid) {
-    const panel = document.getElementById("branchPanel_" + qvid);
-    if (!panel) return;
-
-    const targets = getQuestionTargets(qvid);
-    const options = getOptionLinesForQvid(qvid);
-
-    if (options.length === 0) {
       panel.innerHTML = "";
-      updateBranchBadge(qvid);
-      return;
-    }
 
-    const saved = safeParseJson(panel.getAttribute("data-branch") || "");
-    const map = (saved && typeof saved === "object" && !Array.isArray(saved)) ? saved : {};
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.textContent = "Add path";
+      addBtn.onclick = () => {
+        panel.appendChild(buildBranchRow(qvid, "", "", questions));
+      };
 
-    const tgtOpts = [`<option value="">(no question)</option>`].concat(
-      targets.map(t => `<option value="${t.value}">${t.text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</option>`)
-    ).join("");
+      panel.appendChild(addBtn);
 
-    const rows = options.map(opt => {
-      const safeOpt = String(opt).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      const valOpt = String(opt).replace(/"/g, "&quot;");
-      const selectedTarget = map[opt] ? String(map[opt]) : "";
-      return `
-        <div class="branchRow">
-          <div style="min-width:160px;">When <strong>${safeOpt}</strong> is selected</div>
-          <input type="hidden" name="branch_map_source" value="${qvid}">
-          <input type="hidden" name="branch_map_option" value="${valOpt}">
-          <select name="branch_map_target" class="branchMapTarget">${tgtOpts}</select>
-        </div>
-      `;
-    }).join("");
-
-    panel.innerHTML = rows;
-
-    const selects = panel.querySelectorAll("select.branchMapTarget");
-    selects.forEach((sel, idx) => {
-      const opt = options[idx];
-      const t = map[opt] ? String(map[opt]) : "";
-      sel.value = t;
-      sel.addEventListener("change", function() { updateBranchBadge(qvid); });
+      Object.keys(state || {}).forEach(optLabel => {
+        const tgt = state[optLabel];
+        panel.appendChild(buildBranchRow(qvid, optLabel, tgt, questions));
+      });
     });
-
-    updateBranchBadge(qvid);
   }
 
-  function onBranchToggleChanged(toggleEl) {
-    const qvid = toggleEl.getAttribute("data-qvid");
-    const panel = document.getElementById("branchPanel_" + qvid);
-    if (!panel) return;
-
-    const stateEl = document.querySelector(`input.branchState[data-qvid="${qvid}"]`);
-
-    if (toggleEl.checked) {
-      if (stateEl) stateEl.value = "1";
-      rebuildBranchPanel(qvid);
-      panel.style.display = "block";
-    } else {
-      if (stateEl) stateEl.value = "0";
-      panel.style.display = "none";
-      panel.innerHTML = "";
-    }
-    updateBranchBadge(qvid);
+  function bindBranchToggles() {
+    document.querySelectorAll(".branchToggle").forEach(t => {
+      t.addEventListener("change", () => {
+        const qvid = t.dataset.qvid;
+        const panel = document.getElementById("branchPanel_" + qvid);
+        const state = document.querySelector(`.branchState[data-qvid="${qvid}"]`);
+        if (panel) panel.style.display = t.checked ? "block" : "none";
+        if (state) state.value = t.checked ? "1" : "0";
+      });
+    });
   }
 
-  (function initExistingOptionBlocks() {
-    const selects = document.querySelectorAll("select[data-qvid]");
-    selects.forEach(s => toggleExistingOptions(s));
+  document.addEventListener("DOMContentLoaded", () => {
+    initBranchingPanels();
+    bindBranchToggles();
 
-    const toggles = document.querySelectorAll(".branchToggle");
-    toggles.forEach(t => {
-      t.addEventListener("change", function() { onBranchToggleChanged(t); });
-    });
-
-    toggles.forEach(t => {
-      if (t.checked) {
-        const qvid = t.getAttribute("data-qvid");
-        rebuildBranchPanel(qvid);
-      }
-    });
-
-    const list = document.getElementById("existingList");
-    if (list) {
-      list.addEventListener("input", function(e) {
-        const ta = e.target;
-        if (ta && ta.tagName === "TEXTAREA" && ta.name && ta.name.startsWith("existing_options_")) {
-          const qvid = ta.name.replace("existing_options_", "");
-          const wrap = document.getElementById("branchWrap_" + qvid);
-          const toggle = wrap ? wrap.querySelector(".branchToggle") : null;
-          if (toggle && toggle.checked) rebuildBranchPanel(qvid);
-        }
-        const inp = e.target;
-        if (inp && inp.tagName === "INPUT" && inp.name && inp.name.startsWith("existing_prompt_")) {
-          document.querySelectorAll(".branchToggle").forEach(t => {
-            if (t.checked) {
-              const qvid = t.getAttribute("data-qvid");
-              rebuildBranchPanel(qvid);
-            }
-          });
-        }
-
-        if (inp && inp.tagName === "INPUT" && inp.name && inp.name.startsWith("existing_prompt_")) {
-          refreshMeta();
-        }
-
-        if (e.target && e.target.tagName === "SELECT" && e.target.name && e.target.name.startsWith("existing_type_")) {
-          refreshMeta();
-        }
+    const f = document.getElementById("editForm");
+    if (f) {
+      f.addEventListener("submit", () => {
+        ensureBranchHiddenFields();
       });
     }
-
-    refreshMeta();
-  })();
+  });
 </script>
 
 {% endblock %}
