@@ -1,5 +1,6 @@
 
 
+# This section imports the libraries and shared services used across the app.
 from __future__ import annotations
 import os
 import uuid
@@ -9,6 +10,8 @@ import secrets
 import random
 import hashlib
 from collections import Counter, defaultdict
+from email_delivery import EmailDeliveryServiceFactory, EmailDeliveryResult
+from local_summary import LocalSubmissionSummaryServiceFactory
 from functools import wraps
 from decimal import Decimal
 from datetime import datetime, timedelta
@@ -18,9 +21,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from config import Config
 
+
+# This section creates the Flask app and shared defaults used across requests.
 app = Flask(__name__)
 
 
+# This section stores reusable security questions and reporting defaults used across the form system.
 securityQuestions = [
     {"key": "firstSchool", "text": "What was the name of your first school?"},
     {"key": "childhoodStreet", "text": "What was the name of the street you grew up on?"},
@@ -35,35 +41,43 @@ securityQuestions = [
 ]
 
 
+# This function normalizes role names so permission checks stay consistent.
 def normalizeRoleName(value):
     return (str(value or "").strip().lower())
 
 
+# This function trims and tidies credential text before it is saved or compared.
 def normalizeCredentialText(value):
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
+# This function standardizes security answers before they are checked.
 def normalizeSecurityAnswer(value):
     return normalizeCredentialText(value).lower()
 
 
+# This function creates a one-time code for account setup and reset workflows.
 def buildOneTimeCode():
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     return "-".join("".join(secrets.choice(alphabet) for _ in range(5)) for _ in range(4))
 
 
+# This function builds a placeholder password hash for accounts that still need setup.
 def createPlaceholderPasswordHash():
     return generate_password_hash(secrets.token_urlsafe(32))
 
 
+# This function returns the security questions in a key-to-label format.
 def getSecurityQuestionMap():
     return {item["key"]: item["text"] for item in securityQuestions}
 
 
+# This function checks whether a submitted password meets the app rules.
 def passwordMeetsRules(passwordText):
     return len(passwordText or "") >= 8
 
 
+# This function issues a fresh setup or reset token for a user account.
 def issueUserToken(userId, tokenType, minutesValid, createdByAdminId=None):
     rawCode = buildOneTimeCode()
     expiresAt = datetime.utcnow() + timedelta(minutes=int(minutesValid))
@@ -82,6 +96,7 @@ def issueUserToken(userId, tokenType, minutesValid, createdByAdminId=None):
     return rawCode, expiresAt
 
 
+# This function finds the newest valid token that matches a supplied code.
 def getValidUserToken(userObj, rawCode, tokenType):
     if not userObj or not rawCode:
         return None
@@ -106,11 +121,13 @@ def getValidUserToken(userObj, rawCode, tokenType):
     return None
 
 
+# This function clears any in-progress password reset data from the session.
 def clearPendingResetSession():
     for key in ("pendingResetUserId", "pendingResetTokenId", "pendingResetQuestionIds"):
         session.pop(key, None)
 
 
+# This function makes sure the branding storage files and folders exist before use.
 def ensureBrandingState():
     uploadLogoFolder = app.config.get("UPLOAD_LOGO_FOLDER")
     if not uploadLogoFolder:
@@ -129,16 +146,22 @@ def ensureBrandingState():
             f.write(json.dumps({"logoFilename": None}, indent=2))
     return brandingStatePath
 
+
+# This function reads the saved branding state from disk.
 def getBrandingState():
     brandingStatePath = ensureBrandingState()
     with open(brandingStatePath, "r", encoding="utf-8") as f:
         return json.load(f)
 
+
+# This function writes the saved branding state back to disk.
 def setBrandingState(logoFilename: str | None):
     brandingStatePath = ensureBrandingState()
     with open(brandingStatePath, "w", encoding="utf-8") as f:
         f.write(json.dumps({"logoFilename": logoFilename}, indent=2))
 
+
+# This function checks whether an uploaded logo file type is allowed.
 def allowedLogo(filename: str) -> bool:
     if "." not in filename:
         return False
@@ -147,6 +170,38 @@ def allowedLogo(filename: str) -> bool:
     return ext in allowed
 
 
+# This section defines the default stats panels and summary cards shown on the stats page.
+DEFAULT_VISIBLE_STATS_SECTIONS = [
+    "trainingAlerts",
+    "trackedQuestions",
+    "staffChart",
+    "issueChart",
+    "trendChart",
+    "topIssuesTable",
+    "staffTable",
+    "teamTable",
+    "supervisorTable",
+    "recentFeedback",
+]
+
+DEFAULT_VISIBLE_SUMMARY_CARD_KEYS = [
+    "totalSubmissions",
+    "uniqueStaffMembers",
+    "mostCommonIssue",
+    "mostSubmittedAbout",
+    "highestVolumeTeam",
+]
+
+CUSTOM_MONITOR_MEASURE_OPTIONS = [
+    {"key": "answeredCount", "label": "Answered submissions"},
+    {"key": "yesCount", "label": "Yes answers"},
+    {"key": "noCount", "label": "No answers"},
+    {"key": "mostCommonAnswer", "label": "Most common answer"},
+    {"key": "uniqueAnswers", "label": "Unique answers"},
+]
+
+
+# This function makes sure the stats configuration file exists and is valid.
 def ensureStatsState():
     statsStatePath = app.config.get("STATS_STATE_PATH")
     if not statsStatePath:
@@ -156,25 +211,45 @@ def ensureStatsState():
         os.makedirs(statsStateFolder, exist_ok=True)
     if not os.path.exists(statsStatePath):
         with open(statsStatePath, "w", encoding="utf-8") as f:
-            f.write(json.dumps({"trackedQuestionKeys": [], "trackedQuestionVersionIds": []}, indent=2))
+            f.write(json.dumps({
+                "trackedQuestionKeys": [],
+                "trackedQuestionVersionIds": [],
+                "visibleSectionKeys": list(DEFAULT_VISIBLE_STATS_SECTIONS),
+                "visibleSummaryCardKeys": list(DEFAULT_VISIBLE_SUMMARY_CARD_KEYS),
+                "customMonitorItems": [],
+            }, indent=2))
     return statsStatePath
 
 
+# This function reads the saved stats configuration from disk.
 def getStatsState():
     statsStatePath = ensureStatsState()
     with open(statsStatePath, "r", encoding="utf-8") as f:
         try:
             state = json.load(f)
         except json.JSONDecodeError:
-            state = {"trackedQuestionKeys": [], "trackedQuestionVersionIds": []}
+            state = {
+                "trackedQuestionKeys": [],
+                "trackedQuestionVersionIds": [],
+                "visibleSectionKeys": list(DEFAULT_VISIBLE_STATS_SECTIONS),
+                "visibleSummaryCardKeys": list(DEFAULT_VISIBLE_SUMMARY_CARD_KEYS),
+                "customMonitorItems": [],
+            }
     if "trackedQuestionVersionIds" not in state or not isinstance(state.get("trackedQuestionVersionIds"), list):
         state["trackedQuestionVersionIds"] = []
     if "trackedQuestionKeys" not in state or not isinstance(state.get("trackedQuestionKeys"), list):
         state["trackedQuestionKeys"] = []
+    if "visibleSectionKeys" not in state or not isinstance(state.get("visibleSectionKeys"), list):
+        state["visibleSectionKeys"] = list(DEFAULT_VISIBLE_STATS_SECTIONS)
+    if "visibleSummaryCardKeys" not in state or not isinstance(state.get("visibleSummaryCardKeys"), list):
+        state["visibleSummaryCardKeys"] = list(DEFAULT_VISIBLE_SUMMARY_CARD_KEYS)
+    if "customMonitorItems" not in state or not isinstance(state.get("customMonitorItems"), list):
+        state["customMonitorItems"] = []
     return state
 
 
-def setStatsState(trackedQuestionKeys, trackedQuestionVersionIds=None):
+# This function writes the saved stats configuration back to disk.
+def setStatsState(trackedQuestionKeys, trackedQuestionVersionIds=None, visibleSectionKeys=None, visibleSummaryCardKeys=None, customMonitorItems=None):
     statsStatePath = ensureStatsState()
     cleanIds = []
     for value in trackedQuestionVersionIds or []:
@@ -187,35 +262,172 @@ def setStatsState(trackedQuestionKeys, trackedQuestionVersionIds=None):
         valueText = str(value).strip()
         if valueText != "":
             cleanKeys.append(valueText)
+    allowedSections = set(DEFAULT_VISIBLE_STATS_SECTIONS)
+    cleanVisibleSections = []
+    for value in visibleSectionKeys or []:
+        valueText = str(value).strip()
+        if valueText and valueText in allowedSections and valueText not in cleanVisibleSections:
+            cleanVisibleSections.append(valueText)
+    if not cleanVisibleSections:
+        cleanVisibleSections = list(DEFAULT_VISIBLE_STATS_SECTIONS)
+    allowedCards = set(DEFAULT_VISIBLE_SUMMARY_CARD_KEYS)
+    cleanVisibleSummaryCards = []
+    for value in visibleSummaryCardKeys or []:
+        valueText = str(value).strip()
+        if valueText and valueText in allowedCards and valueText not in cleanVisibleSummaryCards:
+            cleanVisibleSummaryCards.append(valueText)
+    if not cleanVisibleSummaryCards:
+        cleanVisibleSummaryCards = list(DEFAULT_VISIBLE_SUMMARY_CARD_KEYS)
     with open(statsStatePath, "w", encoding="utf-8") as f:
-        f.write(json.dumps({"trackedQuestionKeys": cleanKeys, "trackedQuestionVersionIds": cleanIds}, indent=2))
+        f.write(json.dumps({
+            "trackedQuestionKeys": cleanKeys,
+            "trackedQuestionVersionIds": cleanIds,
+            "visibleSectionKeys": cleanVisibleSections,
+            "visibleSummaryCardKeys": cleanVisibleSummaryCards,
+            "customMonitorItems": customMonitorItems or [],
+        }, indent=2))
 
 
-def stats_required(view_func):
+# This decorator restricts a route to users who can access the stats page.
+def statsRequired(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
         if not session.get("user_id"):
             return redirect(url_for("index"))
-        if session.get("role_name") not in ("admin", "developer"):
+        if not currentUserHasRole("admin", "developer"):
             flash("Stats access requires admin or developer permissions.", "error")
             return redirect(url_for("dashboard"))
         return view_func(*args, **kwargs)
     return wrapper
 
 
+# This function tidies stats text values before they are compared or displayed.
 def normalizeStatsText(value):
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
+# This function converts stats text into a normalized comparison key.
 def normalizeStatsKey(value):
     return normalizeStatsText(value).lower()
 
 
+# This function gets the display label for a custom monitor measure key.
+def getCustomMonitorMeasureLabel(measureType):
+    for item in CUSTOM_MONITOR_MEASURE_OPTIONS:
+        if item["key"] == measureType:
+            return item["label"]
+    return "Answered submissions"
+
+
+# This function cleans saved custom monitor items before the stats page uses them.
+def sanitizeCustomMonitorItems(rawItems, questionMap):
+    allowedMeasureTypes = {item["key"] for item in CUSTOM_MONITOR_MEASURE_OPTIONS}
+    cleanItems = []
+    seenIds = set()
+    for rawItem in rawItems or []:
+        monitorId = normalizeStatsText((rawItem or {}).get("monitorId")) or uuid.uuid4().hex[:12]
+        if monitorId in seenIds:
+            monitorId = uuid.uuid4().hex[:12]
+        seenIds.add(monitorId)
+        title = normalizeStatsText((rawItem or {}).get("title"))
+        questionKey = normalizeStatsKey((rawItem or {}).get("questionKey"))
+        measureType = normalizeStatsText((rawItem or {}).get("measureType"))
+        if questionKey not in questionMap:
+            continue
+        if measureType not in allowedMeasureTypes:
+            measureType = "answeredCount"
+        if not title:
+            title = f"{questionMap[questionKey]['promptText']} · {getCustomMonitorMeasureLabel(measureType)}"
+        cleanItems.append({
+            "monitorId": monitorId,
+            "title": title,
+            "questionKey": questionKey,
+            "measureType": measureType,
+        })
+    return cleanItems
+
+
+# This function calculates the value shown by a custom monitored stat card.
+def buildCustomMonitorValue(monitorItem, answerCounterByPromptKey, answeredSubmissionCounterByPromptKey):
+    questionKey = normalizeStatsKey(monitorItem.get("questionKey"))
+    measureType = normalizeStatsText(monitorItem.get("measureType"))
+    answerCounter = answerCounterByPromptKey.get(questionKey, Counter())
+    answeredCount = int(answeredSubmissionCounterByPromptKey.get(questionKey, 0))
+
+    if measureType == "answeredCount":
+        return str(answeredCount)
+    if measureType == "yesCount":
+        yesCount = sum(count for answer, count in answerCounter.items() if normalizeStatsKey(answer) in {"yes", "true", "correct"})
+        return str(yesCount)
+    if measureType == "noCount":
+        noCount = sum(count for answer, count in answerCounter.items() if normalizeStatsKey(answer) in {"no", "false", "incorrect"})
+        return str(noCount)
+    if measureType == "uniqueAnswers":
+        return str(len(answerCounter))
+    if measureType == "mostCommonAnswer":
+        topAnswer = answerCounter.most_common(1)
+        if not topAnswer:
+            return "No answers yet"
+        return f"{topAnswer[0][0]} ({topAnswer[0][1]})"
+    return str(answeredCount)
+
+
+# This function checks whether a prompt matches any of the supplied keywords.
 def promptLooksLike(promptText, keywords):
     promptKey = normalizeStatsKey(promptText)
     return any(keyword in promptKey for keyword in keywords)
 
 
+# This function checks whether a prompt is asking for the subject team.
+def isSubjectTeamPrompt(promptText):
+    promptKey = normalizeStatsKey(promptText)
+    if "team" not in promptKey:
+        return False
+    if any(keyword in promptKey for keyword in ["crt", "drt", "dispatch", "multiple answers can be selected", "select which team"]):
+        return False
+    if "person the form is about" in promptKey:
+        return True
+    if "if known" in promptKey and any(keyword in promptKey for keyword in ["staff member", "member of staff", "requiring feedback"]):
+        return True
+    return False
+
+
+# This function checks whether a prompt is asking for the subject name.
+def isSubjectNamePrompt(promptText):
+    promptKey = normalizeStatsKey(promptText)
+    if not any(keyword in promptKey for keyword in ["staff member", "member of staff", "person the form is about", "requiring feedback"]):
+        return False
+    if any(keyword in promptKey for keyword in ["supervisor", "email", "team", "select which team", "if known"]):
+        return False
+    return True
+
+
+# This function checks whether a prompt is asking for the supervisor name.
+def isSupervisorNamePrompt(promptText):
+    promptKey = normalizeStatsKey(promptText)
+    return ("supervisor" in promptKey) and ("email" not in promptKey)
+
+
+# This function checks whether a prompt is asking for detailed feedback text.
+def isFeedbackCommentPrompt(promptText):
+    promptKey = normalizeStatsKey(promptText)
+    return any(keyword in promptKey for keyword in ["comment", "feedback to be given", "additional detail", "what happened", "summary detail"])
+
+
+# This function cleans a stats label before it is counted or displayed.
+def sanitizeStatsEntityValue(value, entityType="generic"):
+    valueText = normalizeStatsText(value)
+    if not valueText:
+        return ""
+    valueKey = normalizeStatsKey(valueText)
+    if re.fullmatch(r"example[\s_-]*\d+", valueText, flags=re.IGNORECASE):
+        return ""
+    if entityType == "team" and valueKey in {"unknown", "n/a", "na", "none", "not known", "not sure", "hello", "test"}:
+        return ""
+    return valueText
+
+
+# This function checks whether a prompt should be treated as identity-only data.
 def isIdentityPrompt(promptText):
     promptKey = normalizeStatsKey(promptText)
     identityKeywords = [
@@ -228,11 +440,12 @@ def isIdentityPrompt(promptText):
         "feedback",
         "greeting",
     ]
-    if "staff member" in promptKey or "member of staff" in promptKey:
+    if isSubjectNamePrompt(promptText) or isSubjectTeamPrompt(promptText) or isSupervisorNamePrompt(promptText):
         return True
     return any(keyword in promptKey for keyword in identityKeywords)
 
 
+# This function checks whether an answer should count as an issue signal.
 def answerLooksLikeIssue(promptText, answerLabel):
     promptKey = normalizeStatsKey(promptText)
     answerKey = normalizeStatsKey(answerLabel)
@@ -247,12 +460,14 @@ def answerLooksLikeIssue(promptText, answerLabel):
     return answerKey not in {"n/a", "na", "none", "not applicable", "unknown"}
 
 
+# This function turns a date into a month key used by the trend chart.
 def monthKeyFromDate(value):
     if not value:
         return None
     return value.strftime("%Y-%m")
 
 
+# This function turns a stored month key into a chart-friendly label.
 def monthLabelFromKey(value):
     try:
         return datetime.strptime(value, "%Y-%m").strftime("%b %Y")
@@ -260,14 +475,244 @@ def monthLabelFromKey(value):
         return value
 
 
+# This function builds a short issue summary from a submission answer set.
 def buildIssueSummary(issues):
     if not issues:
         return "None recorded"
     return issues[0][0]
 
+
+# This function formats saved answer values for cards, tables, and summaries.
+def formatAnswerForDisplay(questionObj, answerObj):
+    if not answerObj:
+        return ""
+    if questionObj.response_type in ("number", "rating"):
+        if answerObj.answer_number is not None:
+            valueText = str(answerObj.answer_number)
+            if "." in valueText:
+                valueText = valueText.rstrip("0").rstrip(".")
+            return valueText
+        return (answerObj.answer_text or "").strip()
+    if questionObj.response_type == "select":
+        if answerObj.answer_option_value is None:
+            return ""
+        optionValue = normalizeStatsText(answerObj.answer_option_value)
+        for opt in questionObj.options:
+            if normalizeStatsText(opt.option_value) == optionValue:
+                return (opt.option_label or opt.option_value or "").strip()
+        return str(answerObj.answer_option_value).strip()
+    if questionObj.response_type == "multi_select":
+        rawParts = [normalizeStatsText(value) for value in str(answerObj.answer_text or "").splitlines() if normalizeStatsText(value)]
+        if not rawParts:
+            return ""
+        optionMap = {}
+        for opt in questionObj.options:
+            optionMap[normalizeStatsText(opt.option_value)] = (opt.option_label or opt.option_value or "").strip()
+        return ", ".join([optionMap.get(part, part) for part in rawParts])
+    return (answerObj.answer_text or "").strip()
+
+
+# This function collects the human-readable labels for an answer set.
+def buildAnswerLabelList(questionObj, answerObj, optionLabelByQuestion=None):
+    if not questionObj or not answerObj:
+        return []
+    qid = int(questionObj.question_version_id)
+    labels = []
+    if answerObj.answer_option_value is not None:
+        optionValue = normalizeStatsText(answerObj.answer_option_value)
+        labels.append((optionLabelByQuestion or {}).get(qid, {}).get(optionValue, optionValue))
+    elif answerObj.answer_text is not None:
+        if questionObj.response_type == "multi_select":
+            optionMap = (optionLabelByQuestion or {}).get(qid, {})
+            for value in str(answerObj.answer_text).splitlines():
+                valueText = normalizeStatsText(value)
+                if valueText:
+                    labels.append(optionMap.get(valueText, valueText))
+        else:
+            valueText = normalizeStatsText(answerObj.answer_text)
+            if valueText:
+                labels.append(valueText)
+    elif answerObj.answer_number is not None:
+        numberText = str(answerObj.answer_number)
+        if isinstance(answerObj.answer_number, Decimal) and answerObj.answer_number == answerObj.answer_number.to_integral():
+            numberText = str(int(answerObj.answer_number))
+        labels.append(numberText)
+    return [normalizeStatsText(value) for value in labels if normalizeStatsText(value)]
+
+
+# This function prepares a structured answer summary for one submission.
+def buildSubmissionAnswerSummary(questions, answerByQuestionVersionId):
+    answerSummary = []
+    for questionObj in questions:
+        answerText = formatAnswerForDisplay(questionObj, answerByQuestionVersionId.get(int(questionObj.question_version_id)))
+        answerSummary.append({
+            "questionVersionId": int(questionObj.question_version_id),
+            "promptText": normalizeStatsText(questionObj.prompt_text),
+            "promptKey": normalizeStatsKey(questionObj.prompt_text),
+            "answerText": answerText,
+        })
+    return answerSummary
+
+
+# This function finds the email recipients linked to a submission.
+def findSubmissionEmailTargets(answerSummary):
+    subjectName = ""
+    subjectEmail = ""
+    supervisorName = ""
+    supervisorEmail = ""
+    for item in answerSummary:
+        promptKey = item.get("promptKey") or ""
+        answerText = (item.get("answerText") or "").strip()
+        if not answerText:
+            continue
+        if ("staff member" in promptKey or "member of staff" in promptKey or "requiring feedback" in promptKey) and "supervisor" not in promptKey and "email" not in promptKey and not subjectName:
+            subjectName = answerText
+        elif (("staff member" in promptKey or "member of staff" in promptKey or "requiring feedback" in promptKey) and "email" in promptKey and "supervisor" not in promptKey and not subjectEmail):
+            subjectEmail = answerText
+        elif "supervisor" in promptKey and "email" not in promptKey and not supervisorName:
+            supervisorName = answerText
+        elif "supervisor" in promptKey and "email" in promptKey and not supervisorEmail:
+            supervisorEmail = answerText
+    recipientList = []
+    for value in (supervisorEmail, subjectEmail):
+        cleanValue = str(value or "").strip()
+        if cleanValue and cleanValue not in recipientList:
+            recipientList.append(cleanValue)
+    return {
+        "subjectName": subjectName,
+        "subjectEmail": subjectEmail,
+        "supervisorName": supervisorName,
+        "supervisorEmail": supervisorEmail,
+        "recipientList": recipientList,
+    }
+
+
+# This function builds the default subject and body used for submission emails.
+def buildDefaultSubmissionEmail(formObj, formVersionObj, submissionObj, answerSummary, targetInfo):
+    formTitle = normalizeStatsText(formVersionObj.title if formVersionObj and formVersionObj.title else (formObj.title if formObj else "Review form")) or "Review form"
+    subjectName = targetInfo.get("subjectName") or "staff member"
+    supervisorName = targetInfo.get("supervisorName") or "supervisor"
+    subjectLine = f"{formTitle} submission for {subjectName}"
+    bodyLines = [
+        f"A new {formTitle} has been submitted.",
+        "",
+        f"Submission ID: {submissionObj.submission_id}",
+        f"Submitted at: {submissionObj.submitted_at}",
+        f"Staff member: {targetInfo.get('subjectName') or 'Not provided'}",
+        f"Staff member email: {targetInfo.get('subjectEmail') or 'Not provided'}",
+        f"Supervisor: {supervisorName if supervisorName else 'Not provided'}",
+        f"Supervisor email: {targetInfo.get('supervisorEmail') or 'Not provided'}",
+        "",
+        "Form details:",
+    ]
+    for item in answerSummary:
+        promptText = item.get("promptText") or "Question"
+        answerText = item.get("answerText") or "No response provided"
+        bodyLines.append(f"- {promptText}: {answerText}")
+    bodyLines.extend(["", "This email was generated by the Review System."])
+    return subjectLine, "\n".join(bodyLines)
+
+
+# This function prepares the data needed to preview submission emails in the form.
+def getEmailPreviewContext(formObj, formVersionObj, questions):
+    answerSummary = []
+    for questionObj in questions or []:
+        answerSummary.append({
+            "questionVersionId": int(questionObj.question_version_id),
+            "promptText": normalizeStatsText(questionObj.prompt_text),
+            "promptKey": normalizeStatsKey(questionObj.prompt_text),
+            "answerText": "",
+        })
+    targetInfo = findSubmissionEmailTargets(answerSummary)
+    previewSubmission = type("PreviewSubmission", (), {"submission_id": "Pending", "submitted_at": "Pending"})()
+    defaultSubject, defaultBody = buildDefaultSubmissionEmail(formObj, formVersionObj, previewSubmission, answerSummary, targetInfo)
+    return {
+        "defaultEmailSubject": defaultSubject,
+        "defaultEmailBody": defaultBody,
+        "emailQuestionPrompts": [{
+            "questionVersionId": item["questionVersionId"],
+            "promptText": item["promptText"],
+            "promptKey": item["promptKey"],
+        } for item in answerSummary],
+    }
+
+
+# This function sends the submission email payload through the active delivery service.
+def sendSubmissionEmails(formObj, formVersionObj, submissionObj, questions, answerByQuestionVersionId, customSubject=None, customBody=None):
+    answerSummary = buildSubmissionAnswerSummary(questions, answerByQuestionVersionId)
+    targetInfo = findSubmissionEmailTargets(answerSummary)
+    defaultSubject, defaultBody = buildDefaultSubmissionEmail(formObj, formVersionObj, submissionObj, answerSummary, targetInfo)
+    emailSubject = normalizeStatsText(customSubject) or defaultSubject
+    emailBody = str(customBody or "").strip() or defaultBody
+    deliveryService = EmailDeliveryServiceFactory.create(app.config)
+    return deliveryService.sendSubmissionEmail(
+        recipients=targetInfo.get("recipientList") or [],
+        subject=emailSubject,
+        body=emailBody,
+        metadata={
+            "submissionId": int(submissionObj.submission_id),
+            "formId": int(formObj.form_id),
+            "formVersionId": int(formVersionObj.form_version_id) if formVersionObj else None,
+            "subjectName": targetInfo.get("subjectName") or "",
+            "subjectEmail": targetInfo.get("subjectEmail") or "",
+            "supervisorName": targetInfo.get("supervisorName") or "",
+            "supervisorEmail": targetInfo.get("supervisorEmail") or "",
+            "answers": answerSummary,
+        },
+    )
+
+
+# This function builds the payload passed into the local summariser service.
+def buildSubmissionSummaryPayload(formObj, formVersionObj, submissionObj, questions, answerByQuestionVersionId):
+    answerSummary = buildSubmissionAnswerSummary(questions, answerByQuestionVersionId)
+    summaryService = LocalSubmissionSummaryServiceFactory.create(app.config)
+    formTitle = normalizeStatsText(formVersionObj.title if formVersionObj and formVersionObj.title else (formObj.title if formObj else "Review form")) or "Review form"
+    return summaryService.generateSummary(
+        formTitle=formTitle,
+        submissionId=int(submissionObj.submission_id),
+        submittedAt=submissionObj.submitted_at,
+        answerSummary=answerSummary,
+    )
+
+
+# This function saves the generated summary back onto the submission record.
+def storeSubmissionSummary(submissionObj, summaryResult, commitChanges=True):
+    submissionObj.summary_text = normalizeStatsText(summaryResult.summaryText) or None
+    submissionObj.summary_payload = str(summaryResult.payloadJson or "").strip() or None
+    submissionObj.summary_status = normalizeStatsText(summaryResult.status) or "generated"
+    submissionObj.summary_model = normalizeStatsText(summaryResult.modelName) or None
+    submissionObj.summary_error = normalizeStatsText(summaryResult.message) or None
+    submissionObj.summary_generated_at = datetime.utcnow() if submissionObj.summary_status in ("generated", "disabled") else None
+    if commitChanges:
+        db.session.commit()
+    return submissionObj
+
+
+# This function generates a local summary and stores it on the submission.
+def generateAndStoreSubmissionSummary(formObj, formVersionObj, submissionObj, questions, answerByQuestionVersionId, commitChanges=True):
+    try:
+        summaryResult = buildSubmissionSummaryPayload(formObj, formVersionObj, submissionObj, questions, answerByQuestionVersionId)
+    except Exception as exc:
+        summaryResult = type("SummaryResult", (), {
+            "summaryText": "",
+            "payloadJson": "",
+            "status": "error",
+            "modelName": normalizeStatsText(app.config.get("LOCAL_SUMMARY_MODEL_NAME") or "localRuleBasedSummariser-v1"),
+            "message": f"{type(exc).__name__}: {exc}",
+        })()
+    return storeSubmissionSummary(submissionObj, summaryResult, commitChanges=commitChanges)
+
+
+# This function converts posted form data into normalized answer records.
+def parseSubmissionPayload(payloadText):
+    try:
+        return json.loads(payloadText) if payloadText else None
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
 app.config.from_object(Config)
 
-
+# Set the database connection environment variables for the target machine so the app does not rely on the local default credentials shown here.
 DB_USER = os.environ.get("DB_USER", "admin")
 DB_PASS = os.environ.get("DB_PASS", "A-Strong-Password")
 DB_HOST = os.environ.get("DB_HOST", "127.0.0.1")
@@ -282,6 +727,8 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
 
+# This section defines the database models used by forms, users, submissions, and branching.
+# This model stores role records used by the permission system.
 class Role(db.Model):
     __tablename__ = "roles"
 
@@ -289,6 +736,7 @@ class Role(db.Model):
     role_name = db.Column(db.String(32), unique=True, nullable=False)
 
 
+# This model stores application user accounts and their role links.
 class User(db.Model):
     __tablename__ = "users"
 
@@ -306,6 +754,7 @@ class User(db.Model):
     role = db.relationship("Role")
 
 
+# This model stores the top-level form definition shared across versions.
 class Form(db.Model):
     __tablename__ = "forms"
 
@@ -317,6 +766,7 @@ class Form(db.Model):
     created_by = db.Column(db.BigInteger, db.ForeignKey("users.user_id"), nullable=False)
 
 
+# This model stores each saved version of a form and its metadata.
 class FormVersion(db.Model):
     __tablename__ = "form_versions"
 
@@ -329,6 +779,7 @@ class FormVersion(db.Model):
     notes = db.Column(db.String(255), nullable=True)
 
 
+# This model stores the reusable parent record for a question across versions.
 class Question(db.Model):
     __tablename__ = "questions"
 
@@ -337,6 +788,7 @@ class Question(db.Model):
     created_by = db.Column(db.BigInteger, db.ForeignKey("users.user_id"), nullable=False)
 
 
+# This model stores the version-specific wording and settings for a question.
 class QuestionVersion(db.Model):
     __tablename__ = "question_versions"
 
@@ -362,6 +814,7 @@ class QuestionVersion(db.Model):
     )
 
 
+# This model stores selectable options for a versioned question.
 class QuestionVersionOption(db.Model):
     __tablename__ = "question_version_options"
 
@@ -379,7 +832,7 @@ class QuestionVersionOption(db.Model):
     question_version = db.relationship("QuestionVersion", back_populates="options")
 
 
-
+# This model stores section records used to group questions within a form version.
 class FormVersionSection(db.Model):
     __tablename__ = "form_version_sections"
 
@@ -389,6 +842,8 @@ class FormVersionSection(db.Model):
     description = db.Column(db.Text, nullable=True)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
 
+
+# This model stores the ordering and placement of questions inside a form version.
 class FormVersionQuestion(db.Model):
     __tablename__ = "form_version_questions"
 
@@ -399,6 +854,7 @@ class FormVersionQuestion(db.Model):
     sort_order = db.Column(db.Integer, nullable=False, default=0)
 
 
+# This model stores branching rules that control which questions appear next.
 class FormQuestionBranching(db.Model):
     __tablename__ = "form_question_branching"
 
@@ -414,6 +870,7 @@ class FormQuestionBranching(db.Model):
     priority = db.Column(db.Integer, nullable=False, default=0)
 
 
+# This model stores a completed form submission and its summary data.
 class FormSubmission(db.Model):
     __tablename__ = "form_submissions"
 
@@ -422,8 +879,15 @@ class FormSubmission(db.Model):
     form_version_id = db.Column(db.BigInteger, db.ForeignKey("form_versions.form_version_id"), nullable=False)
     submitted_by = db.Column(db.BigInteger, db.ForeignKey("users.user_id"), nullable=False)
     submitted_at = db.Column(db.DateTime, nullable=False, server_default=db.func.current_timestamp())
+    summary_text = db.Column(db.Text, nullable=True)
+    summary_payload = db.Column(db.Text, nullable=True)
+    summary_status = db.Column(db.String(32), nullable=True)
+    summary_model = db.Column(db.String(120), nullable=True)
+    summary_error = db.Column(db.Text, nullable=True)
+    summary_generated_at = db.Column(db.DateTime, nullable=True)
 
 
+# This model stores the individual answers linked to a submitted form.
 class SubmissionAnswer(db.Model):
     __tablename__ = "submission_answers"
 
@@ -435,6 +899,7 @@ class SubmissionAnswer(db.Model):
     answer_option_value = db.Column(db.String(128), nullable=True)
 
 
+# This model stores one-time setup and reset tokens issued to user accounts.
 class UserSetupToken(db.Model):
     __tablename__ = "user_setup_tokens"
 
@@ -448,6 +913,7 @@ class UserSetupToken(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.current_timestamp())
 
 
+# This model stores the saved security question answers for a user.
 class UserSecurityQuestion(db.Model):
     __tablename__ = "user_security_questions"
 
@@ -459,13 +925,101 @@ class UserSecurityQuestion(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.current_timestamp())
 
 
-def login_required(view_func):
+# This section contains current-user helpers and permission checks used by the routes.
+# This function returns the logged-in user record for the current session.
+def getCurrentUser():
+    userId = session.get("user_id")
+    if not str(userId or "").isdigit():
+        return None
+    return User.query.filter_by(user_id=int(userId)).first()
+
+
+# This function returns the current user role name in a normalized format.
+def getCurrentRoleName(userObj=None, refreshSession=True):
+    if userObj is None:
+        userObj = getCurrentUser()
+
+    roleName = ""
+    if userObj and userObj.role_id is not None:
+        roleRow = db.session.query(Role.role_name).filter(Role.role_id == userObj.role_id).first()
+        if roleRow:
+            roleName = normalizeRoleName(roleRow[0])
+
+    if not roleName:
+        roleName = normalizeRoleName(session.get("role_name"))
+
+    if refreshSession and userObj:
+        session["role_name"] = roleName
+        session["username"] = userObj.username
+        session["role_id"] = int(userObj.role_id or 0)
+    return roleName
+
+
+# This function checks whether the current user has one of the supplied roles.
+def currentUserHasRole(*roleNames):
+    currentRoleName = getCurrentRoleName(refreshSession=True)
+    normalizedRoleNames = {normalizeRoleName(roleName) for roleName in roleNames}
+    return currentRoleName in normalizedRoleNames
+
+
+# This function checks whether the current user can manage accounts.
+def currentUserCanManageAccounts():
+    return currentUserHasRole("admin", "developer")
+
+
+# This function checks whether the current user can view every submission.
+def currentUserCanViewAllSubmissions():
+    return currentUserHasRole("admin", "developer")
+
+
+# This function checks whether the current user can assign a target role during account management.
+def currentUserCanAssignRole(targetRoleName, targetUser=None):
+    currentRoleName = getCurrentRoleName(refreshSession=True)
+    normalizedTargetRoleName = normalizeRoleName(targetRoleName)
+    targetUserRoleName = normalizeRoleName(targetUser.role.role_name if (targetUser and targetUser.role) else None)
+
+    if currentRoleName == "developer":
+        return normalizedTargetRoleName in ("standard", "admin", "developer")
+    if currentRoleName == "admin":
+        return normalizedTargetRoleName in ("standard", "admin") and targetUserRoleName not in ("developer",)
+    return False
+
+
+# This function returns the visible role choices for the current account-management user.
+def getManageableRoleOptions(targetUser=None):
+    roleRows = Role.query.order_by(Role.role_name.asc()).all()
+    return [
+        roleRow
+        for roleRow in roleRows
+        if currentUserCanAssignRole(roleRow.role_name, targetUser=targetUser)
+    ]
+
+
+# This function checks whether the current user can access developer branding tools.
+def currentUserCanViewBranding():
+    return currentUserHasRole("developer")
+
+
+# This function refreshes the stored session role details from the live database record.
+@app.before_request
+def syncCurrentUserContext():
+    if not session.get("user_id"):
+        return
+    userObj = getCurrentUser()
+    if not userObj or not userObj.is_active:
+        session.clear()
+        return
+    getCurrentRoleName(userObj=userObj, refreshSession=True)
+
+
+# This decorator redirects users to sign in before they open a protected route.
+def loginRequired(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
         userId = session.get("user_id")
         if not userId:
             return redirect(url_for("index"))
-        userObj = User.query.filter_by(user_id=int(userId)).first()
+        userObj = getCurrentUser()
         if not userObj or not userObj.is_active:
             session.clear()
             return redirect(url_for("index"))
@@ -477,35 +1031,54 @@ def login_required(view_func):
             session.clear()
             flash("Account setup is required before you can sign in.", "warning")
             return redirect(url_for("set_password"))
-        session["role_name"] = normalizeRoleName(userObj.role.role_name if userObj.role else None)
+        getCurrentRoleName(userObj=userObj, refreshSession=True)
+        session["session_version"] = int(userObj.session_version or 1)
         return view_func(*args, **kwargs)
     return wrapper
 
 
-def admin_required(view_func):
+# This decorator restricts a route to admin users only.
+def adminRequired(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
         if not session.get("user_id"):
             return redirect(url_for("index"))
-        if session.get("role_name") != "admin":
+        if getCurrentRoleName(refreshSession=True) != "admin":
             flash("Admins only.", "error")
             return redirect(url_for("dashboard"))
         return view_func(*args, **kwargs)
     return wrapper
 
 
-def editor_required(view_func):
+# This decorator restricts a route to developer users only.
+def developerRequired(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
         if not session.get("user_id"):
             return redirect(url_for("index"))
-        role_name = session.get("role_name")
-        if role_name not in ("admin", "developer"):
+        if getCurrentRoleName(refreshSession=True) != "developer":
+            flash("Developers only.", "error")
+            return redirect(url_for("dashboard"))
+        return view_func(*args, **kwargs)
+    return wrapper
+
+
+# This decorator restricts a route to admin or developer editors.
+def editorRequired(view_func):
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("index"))
+        roleName = getCurrentRoleName(refreshSession=True)
+        if roleName not in ("admin", "developer"):
             flash("Editors only.", "error")
             return redirect(url_for("dashboard"))
         return view_func(*args, **kwargs)
     return wrapper
 
+
+# This section injects shared branding and theme values into every rendered template.
+# This function injects branding, theme, and role values into each template render.
 @app.context_processor
 def injectBranding():
     brandingState = getBrandingState()
@@ -523,16 +1096,28 @@ def injectBranding():
     themeBackgroundColor = app.config.get("THEME_BACKGROUND_COLOR")
     themeButtonColor = app.config.get("THEME_BUTTON_COLOR")
     themeButtonTextColor = app.config.get("THEME_BUTTON_TEXT_COLOR")
+    # Configure the Microsoft Graph environment values in config before expecting live email sending, otherwise the UI will stay in mock-email mode.
+    graphConfigured = bool(app.config.get("GRAPH_CLIENT_ID") and app.config.get("GRAPH_CLIENT_SECRET") and app.config.get("GRAPH_TENANT_ID") and app.config.get("GRAPH_SENDER_EMAIL"))
+    emailDeliveryMode = (app.config.get("EMAIL_DELIVERY_MODE") or "auto").strip().lower()
+    usingMockEmailStrategy = (not graphConfigured) or emailDeliveryMode == "mock"
+    currentRoleName = getCurrentRoleName(refreshSession=True)
     return {
         "siteLogoUrl": siteLogoUrl,
         "themeBackgroundColor": themeBackgroundColor,
         "themeButtonColor": themeButtonColor,
         "themeButtonTextColor": themeButtonTextColor,
+        "graphConfigured": graphConfigured,
+        "usingMockEmailStrategy": usingMockEmailStrategy,
+        "currentRoleName": currentRoleName,
+        "canManageAccounts": currentUserCanManageAccounts(),
+        "canViewAllSubmissions": currentUserCanViewAllSubmissions(),
+        "canViewBranding": currentUserCanViewBranding(),
     }
 
 
+# This route lets developers update the logo and theme branding values.
 @app.route("/admin/branding", methods=["GET", "POST"])
-@admin_required
+@developerRequired
 def branding():
     if request.method == "POST":
         file = request.files.get("logo")
@@ -556,7 +1141,8 @@ def branding():
     return render_template("branding.html")
 
 
-
+# This section keeps the database schema and default records in sync with the current code.
+# This function applies the database checks and safe schema updates used by the app.
 def ensureDatabaseSchema():
     dbName = db.engine.url.database
     if not dbName:
@@ -590,6 +1176,19 @@ def ensureDatabaseSchema():
         ("description", "ALTER TABLE form_versions ADD COLUMN description TEXT NULL AFTER title"),
         ("notes", "ALTER TABLE form_versions ADD COLUMN notes VARCHAR(255) NULL AFTER created_by"),
     ]
+
+    formSubmissionsAlter = [
+        ("summary_text", "ALTER TABLE form_submissions ADD COLUMN summary_text TEXT NULL AFTER submitted_at"),
+        ("summary_payload", "ALTER TABLE form_submissions ADD COLUMN summary_payload TEXT NULL AFTER summary_text"),
+        ("summary_status", "ALTER TABLE form_submissions ADD COLUMN summary_status VARCHAR(32) NULL AFTER summary_payload"),
+        ("summary_model", "ALTER TABLE form_submissions ADD COLUMN summary_model VARCHAR(120) NULL AFTER summary_status"),
+        ("summary_error", "ALTER TABLE form_submissions ADD COLUMN summary_error TEXT NULL AFTER summary_model"),
+        ("summary_generated_at", "ALTER TABLE form_submissions ADD COLUMN summary_generated_at DATETIME NULL AFTER summary_error"),
+    ]
+    for columnName, statement in formSubmissionsAlter:
+        if tableExists("form_submissions") and not columnExists("form_submissions", columnName):
+            db.session.execute(db.text(statement))
+
     for columnName, statement in formVersionsAlter:
         if tableExists("form_versions") and not columnExists("form_versions", columnName):
             db.session.execute(db.text(statement))
@@ -660,7 +1259,8 @@ def ensureDatabaseSchema():
     db.session.commit()
 
 
-def seed_roles_if_missing():
+# This function inserts the default user roles when they are missing.
+def seedRolesIfMissing():
     existingRoles = {normalizeRoleName(role.role_name): role for role in Role.query.all()}
     for roleName in ("admin", "standard", "developer"):
         if roleName not in existingRoles:
@@ -668,16 +1268,19 @@ def seed_roles_if_missing():
     db.session.commit()
 
 
+# This function runs the database readiness checks before the app serves requests.
 @app.before_request
-def _ensure_db_ready():
+def _ensureDbReady():
     if not app.config.get("_SEEDED_ROLES"):
         db.session.execute(db.text("SELECT 1"))
         ensureDatabaseSchema()
-        seed_roles_if_missing()
+        seedRolesIfMissing()
         app.config["_SEEDED_ROLES"] = True
+    ensureLockedTeamQuestionPresent()
 
 
-def _get_active_form_and_latest_version():
+# This function gets the active form and its latest editable version.
+def _getActiveFormAndLatestVersion():
     f = db.session.query(Form).filter(Form.is_active == 1).first()
     if not f:
         return None, None
@@ -690,7 +1293,8 @@ def _get_active_form_and_latest_version():
     return f, v
 
 
-def _get_sections_for_version(form_version_id: int):
+# This function gets the section layout and grouped questions for a form version.
+def _getSectionsForVersion(form_version_id: int):
     sections = (
         db.session.query(FormVersionSection)
         .filter(FormVersionSection.form_version_id == form_version_id)
@@ -729,17 +1333,139 @@ def _get_sections_for_version(form_version_id: int):
     return unsectioned_questions, sections_with_questions
 
 
-def _get_questions_for_version(form_version_id: int):
-    unsectioned_questions, sections_with_questions = _get_sections_for_version(form_version_id)
+# This function gets every question for a form version in display order.
+def _getQuestionsForVersion(form_version_id: int):
+    unsectioned_questions, sections_with_questions = _getSectionsForVersion(form_version_id)
     out = []
     out.extend(unsectioned_questions)
     for item in sections_with_questions:
         out.extend(item.get("questions") or [])
     return out
 
+DEFAULT_LOCKED_TEAM_PROMPT = "What is the team (if known) of the person the form is about?"
+DEFAULT_LOCKED_TEAM_HINT = "Leave blank if the team is not known."
 
 
-def _get_branching_for_version(form_version_id: int):
+# This function adds the locked team question when the form version does not have it yet.
+def ensureLockedTeamQuestionPresent():
+    formObj, latestVersion = _getActiveFormAndLatestVersion()
+    if not formObj or not latestVersion:
+        return
+
+    existingQuestions = _getQuestionsForVersion(int(latestVersion.form_version_id))
+    if any(isSubjectTeamPrompt(questionObj.prompt_text) for questionObj in existingQuestions):
+        return
+
+    newQuestion = Question(question_key=uuid.uuid4().hex, created_by=int(latestVersion.created_by or 1))
+    db.session.add(newQuestion)
+    db.session.flush()
+
+    newQuestionVersion = QuestionVersion(
+        question_id=newQuestion.question_id,
+        version_number=1,
+        prompt_text=DEFAULT_LOCKED_TEAM_PROMPT,
+        response_type="text",
+        is_required=False,
+        hint_text=DEFAULT_LOCKED_TEAM_HINT,
+        question_description=None,
+        is_locked=True,
+        help_text=None,
+        is_active=True,
+        created_by=int(latestVersion.created_by or 1),
+    )
+    db.session.add(newQuestionVersion)
+    db.session.flush()
+
+    newFormVersion = FormVersion(
+        form_id=formObj.form_id,
+        version_number=int(latestVersion.version_number or 0) + 1,
+        title=latestVersion.title,
+        description=latestVersion.description,
+        created_by=int(latestVersion.created_by or 1),
+        notes=latestVersion.notes,
+    )
+    db.session.add(newFormVersion)
+    db.session.flush()
+
+    sectionIdMap = {}
+    oldSections = (
+        FormVersionSection.query
+        .filter(FormVersionSection.form_version_id == latestVersion.form_version_id)
+        .order_by(FormVersionSection.sort_order.asc(), FormVersionSection.section_id.asc())
+        .all()
+    )
+    for oldSection in oldSections:
+        newSection = FormVersionSection(
+            form_version_id=newFormVersion.form_version_id,
+            title=oldSection.title,
+            description=oldSection.description,
+            sort_order=int(oldSection.sort_order or 0),
+        )
+        db.session.add(newSection)
+        db.session.flush()
+        sectionIdMap[int(oldSection.section_id)] = int(newSection.section_id)
+
+    insertedTeamQuestion = False
+
+    def addQuestionLink(questionVersionId, sectionId, sortOrder):
+        db.session.add(FormVersionQuestion(
+            form_version_id=newFormVersion.form_version_id,
+            question_version_id=int(questionVersionId),
+            section_id=sectionId,
+            sort_order=int(sortOrder),
+        ))
+
+    unsectionedQuestions, sectionsWithQuestions = _getSectionsForVersion(int(latestVersion.form_version_id))
+    unsectionedSortOrder = 0
+    for questionObj in unsectionedQuestions:
+        addQuestionLink(questionObj.question_version_id, None, unsectionedSortOrder)
+        unsectionedSortOrder += 1
+        if not insertedTeamQuestion and isSubjectNamePrompt(questionObj.prompt_text):
+            addQuestionLink(newQuestionVersion.question_version_id, None, unsectionedSortOrder)
+            unsectionedSortOrder += 1
+            insertedTeamQuestion = True
+
+    for sectionItem in sectionsWithQuestions:
+        oldSection = sectionItem.get("section")
+        targetSectionId = sectionIdMap.get(int(oldSection.section_id)) if oldSection else None
+        sectionSortOrder = 0
+        for questionObj in sectionItem.get("questions") or []:
+            addQuestionLink(questionObj.question_version_id, targetSectionId, sectionSortOrder)
+            sectionSortOrder += 1
+            if not insertedTeamQuestion and isSubjectNamePrompt(questionObj.prompt_text):
+                addQuestionLink(newQuestionVersion.question_version_id, targetSectionId, sectionSortOrder)
+                sectionSortOrder += 1
+                insertedTeamQuestion = True
+
+    if not insertedTeamQuestion:
+        addQuestionLink(newQuestionVersion.question_version_id, None, unsectionedSortOrder)
+
+    existingBranches = (
+        FormQuestionBranching.query
+        .filter(FormQuestionBranching.form_version_id == latestVersion.form_version_id)
+        .order_by(FormQuestionBranching.priority.asc(), FormQuestionBranching.branching_id.asc())
+        .all()
+    )
+    for branchRow in existingBranches:
+        db.session.add(FormQuestionBranching(
+            form_version_id=newFormVersion.form_version_id,
+            source_question_version_id=branchRow.source_question_version_id,
+            target_question_version_id=branchRow.target_question_version_id,
+            operator=branchRow.operator,
+            compare_option_value=branchRow.compare_option_value,
+            compare_number=branchRow.compare_number,
+            compare_text=branchRow.compare_text,
+            action=branchRow.action,
+            priority=branchRow.priority,
+        ))
+
+    formObj.title = newFormVersion.title or formObj.title
+    formObj.description = newFormVersion.description
+    db.session.commit()
+
+
+# This function returns the saved branching rules for a form version.
+def _getBranchingForVersion(form_version_id: int):
     rows = (
         db.session.query(FormQuestionBranching)
         .filter(FormQuestionBranching.form_version_id == form_version_id)
@@ -762,12 +1488,15 @@ def _get_branching_for_version(form_version_id: int):
     ]
 
 
+# This route returns the branching rules for the live form as JSON.
 @app.route("/api/branching/<int:form_version_id>", methods=["GET"])
-@login_required
+@loginRequired
 def api_branching(form_version_id: int):
-    return jsonify(_get_branching_for_version(form_version_id))
+    return jsonify(_getBranchingForVersion(form_version_id))
 
 
+# This section contains the authentication and account-management routes.
+# This route handles the sign-in page and its authentication checks.
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -792,12 +1521,14 @@ def index():
     return render_template("index.html")
 
 
+# This route redirects users into the first-time account setup flow.
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     flash("Accounts can only be created by an admin.", "warning")
     return redirect(url_for("index"))
 
 
+# This route handles the first-time password setup workflow.
 @app.route("/set-password", methods=["GET", "POST"])
 def set_password():
     questionMap = getSecurityQuestionMap()
@@ -856,6 +1587,7 @@ def set_password():
     return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=presetUsername)
 
 
+# This route handles the reset-key and security-question password reset flow.
 @app.route("/reset-password", methods=["GET", "POST"])
 def reset_password():
     questionRows = []
@@ -933,8 +1665,9 @@ def reset_password():
     return render_template("reset_password.html", resetQuestions=questionRows, questionStep=bool(questionRows), presetUsername="")
 
 
+# This route lets editors create accounts and issue setup or reset codes.
 @app.route("/admin/users", methods=["GET", "POST"])
-@admin_required
+@editorRequired
 def manage_users():
     adminId = int(session.get("user_id"))
     revealCode = None
@@ -953,6 +1686,9 @@ def manage_users():
                 return redirect(url_for("manage_users"))
             if not roleObj:
                 flash("Please choose an account role.", "error")
+                return redirect(url_for("manage_users"))
+            if not currentUserCanAssignRole(roleObj.role_name):
+                flash("You do not have permission to create that type of account.", "error")
                 return redirect(url_for("manage_users"))
             if User.query.filter_by(username=username).first():
                 flash("That username already exists.", "error")
@@ -975,6 +1711,28 @@ def manage_users():
             revealTitle = f"One-time setup code for {username}"
             revealMeta = f"Expires: {expiresAt.strftime('%d %b %Y %H:%M UTC')}"
             flash("Account created. Give the one-time setup code to the user securely.", "success")
+
+        elif formAction == "change_role":
+            userIdRaw = request.form.get("user_id") or ""
+            roleIdRaw = request.form.get("new_role_id") or ""
+            userObj = User.query.filter_by(user_id=int(userIdRaw)).first() if str(userIdRaw).isdigit() else None
+            roleObj = Role.query.filter_by(role_id=int(roleIdRaw)).first() if str(roleIdRaw).isdigit() else None
+            if not userObj or not roleObj:
+                flash("User or role not found.", "error")
+                return redirect(url_for("manage_users"))
+            if not currentUserCanAssignRole(roleObj.role_name, targetUser=userObj):
+                flash("You do not have permission to change that account to the selected role.", "error")
+                return redirect(url_for("manage_users"))
+            if userObj.user_id == adminId and normalizeRoleName(roleObj.role_name) != getCurrentRoleName(refreshSession=True):
+                flash("You cannot change your own account role here.", "warning")
+                return redirect(url_for("manage_users"))
+            if int(userObj.role_id or 0) == int(roleObj.role_id):
+                flash("That account already has that role.", "info")
+                return redirect(url_for("manage_users"))
+            userObj.role_id = int(roleObj.role_id)
+            userObj.session_version = int(userObj.session_version or 1) + 1
+            db.session.commit()
+            flash(f"Updated {userObj.username} to {roleObj.role_name}.", "success")
 
         elif formAction == "issue_reset":
             userIdRaw = request.form.get("user_id") or ""
@@ -1006,15 +1764,30 @@ def manage_users():
             revealMeta = f"Expires: {expiresAt.strftime('%d %b %Y %H:%M UTC')}"
             flash("A fresh setup code has been created.", "success")
 
-    roleOptions = Role.query.order_by(Role.role_name.asc()).all()
+    roleOptions = getManageableRoleOptions()
     userRows = User.query.join(Role, Role.role_id == User.role_id).order_by(User.username.asc()).all()
-    return render_template("manage_users.html", roleOptions=roleOptions, userRows=userRows, revealCode=revealCode, revealTitle=revealTitle, revealMeta=revealMeta)
+    userRoleOptionMap = {
+        int(userRow.user_id): getManageableRoleOptions(targetUser=userRow)
+        for userRow in userRows
+    }
+    return render_template(
+        "manage_users.html",
+        roleOptions=roleOptions,
+        userRows=userRows,
+        revealCode=revealCode,
+        revealTitle=revealTitle,
+        revealMeta=revealMeta,
+        currentRoleName=getCurrentRoleName(refreshSession=True),
+        userRoleOptionMap=userRoleOptionMap,
+    )
 
 
+# This section contains the dashboard, submission viewing, and sign-out routes.
+# This route shows the dashboard cards and the submissions visible to the current user.
 @app.route("/dashboard")
-@login_required
+@loginRequired
 def dashboard():
-    is_admin = normalizeRoleName(session.get("role_name")) == "admin"
+    canViewAllSubmissions = currentUserCanViewAllSubmissions()
     user_id = int(session.get("user_id"))
 
     q = (
@@ -1024,18 +1797,19 @@ def dashboard():
         .join(User, User.user_id == FormSubmission.submitted_by)
     )
 
-    if not is_admin:
+    if not canViewAllSubmissions:
         q = q.filter(FormSubmission.submitted_by == user_id)
 
     submissions = q.order_by(FormSubmission.submitted_at.desc(), FormSubmission.submission_id.desc()).all()
 
-    return render_template("dashboard.html", submissions=submissions, is_admin=is_admin)
+    return render_template("dashboard.html", submissions=submissions, is_admin=canViewAllSubmissions, canViewAllSubmissions=canViewAllSubmissions)
 
 
+# This route shows a saved submission in its read-only versioned form.
 @app.route("/submission/<int:submission_id>")
-@login_required
+@loginRequired
 def view_submission(submission_id: int):
-    is_admin = normalizeRoleName(session.get("role_name")) == "admin"
+    canViewAllSubmissions = currentUserCanViewAllSubmissions()
     user_id = int(session.get("user_id"))
 
     submission = FormSubmission.query.filter_by(submission_id=submission_id).first()
@@ -1043,19 +1817,32 @@ def view_submission(submission_id: int):
         flash("Submission not found.", "error")
         return redirect(url_for("dashboard"))
 
-    if not is_admin and int(submission.submitted_by) != user_id:
+    if not canViewAllSubmissions and int(submission.submitted_by) != user_id:
         flash("You do not have permission to view that submission.", "error")
         return redirect(url_for("dashboard"))
 
     form_obj = Form.query.filter_by(form_id=submission.form_id).first()
     form_version = FormVersion.query.filter_by(form_version_id=submission.form_version_id).first()
 
-    unsectioned_questions, sections_with_questions = _get_sections_for_version(submission.form_version_id)
+    unsectioned_questions, sections_with_questions = _getSectionsForVersion(submission.form_version_id)
 
     answer_rows = (
         SubmissionAnswer.query.filter_by(submission_id=submission.submission_id)
         .all()
     )
+
+    questions = (unsectioned_questions + [q for s in sections_with_questions for q in (s.get("questions") or [])])
+    answerByQuestionVersionId = {int(answerRow.question_version_id): answerRow for answerRow in answer_rows}
+
+    if not normalizeStatsText(submission.summary_text) and normalizeStatsText(submission.summary_status) != "disabled":
+        generateAndStoreSubmissionSummary(
+            formObj=form_obj,
+            formVersionObj=form_version,
+            submissionObj=submission,
+            questions=questions,
+            answerByQuestionVersionId=answerByQuestionVersionId,
+            commitChanges=True,
+        )
 
     answers = {}
     for a in answer_rows:
@@ -1072,24 +1859,29 @@ def view_submission(submission_id: int):
         form_version=form_version,
         unsectioned_questions=unsectioned_questions,
         sections_with_questions=sections_with_questions,
-        questions=(unsectioned_questions + [q for s in sections_with_questions for q in (s.get("questions") or [])]),
-        is_admin=is_admin,
+        questions=questions,
+        is_admin=canViewAllSubmissions,
+        canViewAllSubmissions=canViewAllSubmissions,
         view_only=True,
         answers=answers,
         submission=submission,
+        submissionSummaryPayload=parseSubmissionPayload(submission.summary_payload),
     )
 
 
+# This route signs the current user out and clears their session.
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("index"))
 
 
+# This section contains the live form, edit-form, and branching routes.
+# This route renders the live form and stores new submissions.
 @app.route("/form", methods=["GET", "POST"])
-@login_required
+@loginRequired
 def form():
-    form_obj, latest_version = _get_active_form_and_latest_version()
+    form_obj, latest_version = _getActiveFormAndLatestVersion()
 
     if not form_obj:
         return render_template("form.html", form=None)
@@ -1100,12 +1892,12 @@ def form():
             form=form_obj,
             form_version=None,
             questions=[],
-            is_admin=session.get("role_name") == "admin",
+            is_admin=currentUserCanManageAccounts(),
         )
 
     if request.method == "POST":
         user_id = int(session["user_id"])
-        unsectioned_questions, sections_with_questions = _get_sections_for_version(latest_version.form_version_id)
+        unsectioned_questions, sections_with_questions = _getSectionsForVersion(latest_version.form_version_id)
         questions = unsectioned_questions + [q for s in sections_with_questions for q in (s.get("questions") or [])]
 
         sub = FormSubmission(
@@ -1115,6 +1907,8 @@ def form():
         )
         db.session.add(sub)
         db.session.flush()
+
+        answerByQuestionVersionId = {}
 
         for q in questions:
             field = f"q_{q.question_version_id}"
@@ -1143,12 +1937,44 @@ def form():
                     ans.answer_text = str(raw)
 
             db.session.add(ans)
+            answerByQuestionVersionId[int(q.question_version_id)] = ans
 
         db.session.commit()
-        flash("Form submitted.", "success")
+
+        generateAndStoreSubmissionSummary(
+            formObj=form_obj,
+            formVersionObj=latest_version,
+            submissionObj=sub,
+            questions=questions,
+            answerByQuestionVersionId=answerByQuestionVersionId,
+            commitChanges=True,
+        )
+
+        emailResult = sendSubmissionEmails(
+            formObj=form_obj,
+            formVersionObj=latest_version,
+            submissionObj=sub,
+            questions=questions,
+            answerByQuestionVersionId=answerByQuestionVersionId,
+            customSubject=request.form.get("emailSubject"),
+            customBody=request.form.get("emailBody"),
+        )
+
+        if not emailResult.recipients:
+            flash("Form submitted. No email was sent because no staff member or supervisor email address was provided on the form.", "warning")
+        elif emailResult.status == "sent":
+            flash("Form submitted and email sent.", "success")
+        elif emailResult.status == "mocked":
+            flash("Form submitted. Email was captured by the mock email strategy for development and marking.", "info")
+        else:
+            flash(f"Form submitted. Email delivery could not be completed: {emailResult.message}", "warning")
+        if normalizeStatsText(sub.summary_status) == "error":
+            flash(f"The form was saved, but the local summary could not be generated: {sub.summary_error}", "warning")
         return redirect(url_for("form"))
 
-    unsectioned_questions, sections_with_questions = _get_sections_for_version(latest_version.form_version_id)
+    unsectioned_questions, sections_with_questions = _getSectionsForVersion(latest_version.form_version_id)
+    questions = (unsectioned_questions + [q for s in sections_with_questions for q in (s.get("questions") or [])])
+    emailPreviewContext = getEmailPreviewContext(form_obj, latest_version, questions)
 
     return render_template(
         "form.html",
@@ -1156,15 +1982,19 @@ def form():
         form_version=latest_version,
         unsectioned_questions=unsectioned_questions,
         sections_with_questions=sections_with_questions,
-        questions=(unsectioned_questions + [q for s in sections_with_questions for q in (s.get("questions") or [])]),
-        is_admin=session.get("role_name") == "admin",
+        questions=questions,
+        is_admin=currentUserCanManageAccounts(),
+        defaultEmailSubject=emailPreviewContext["defaultEmailSubject"],
+        defaultEmailBody=emailPreviewContext["defaultEmailBody"],
+        emailQuestionPrompts=emailPreviewContext["emailQuestionPrompts"],
     )
 
 
+# This route lets editors change the form structure and save a new version.
 @app.route("/edit-form", methods=["GET", "POST"])
-@editor_required
+@editorRequired
 def editform():
-    form_obj, latest_version = _get_active_form_and_latest_version()
+    form_obj, latest_version = _getActiveFormAndLatestVersion()
 
     if not form_obj:
         flash("No active form available.", "error")
@@ -1176,7 +2006,7 @@ def editform():
 
     if request.method == "POST":
         user_id = int(session["user_id"])
-        isDeveloper = session.get("role_name") == "developer"
+        isDeveloper = currentUserHasRole("developer")
         next_version_number = int(latest_version.version_number) + 1
 
         formTitle = (request.form.get("form_title") or "").strip()
@@ -1189,7 +2019,7 @@ def editform():
             ordered_existing = request.form.getlist("existing_qv_id")
             ordered_items = [f"existing:{x}" for x in ordered_existing if x]
         delete_ids = set(request.form.getlist("delete_qv_id"))
-        if session.get("role_name") != "developer":
+        if not currentUserHasRole("developer"):
             filtered = set()
             for x in delete_ids:
                 try:
@@ -1202,8 +2032,28 @@ def editform():
 
         all_qv_ids = []
         qv_id_map = {}
+        label_to_value_for_source = {}
 
-        label_to_value_for_old_qvid = {}
+        def storeQvIdMapping(sourceKey, targetQvId):
+            qv_id_map[sourceKey] = int(targetQvId)
+            qv_id_map[str(sourceKey)] = int(targetQvId)
+
+        def resolveQvId(sourceKey):
+            if sourceKey in qv_id_map:
+                return int(qv_id_map[sourceKey])
+            sourceKeyStr = str(sourceKey)
+            if sourceKeyStr in qv_id_map:
+                return int(qv_id_map[sourceKeyStr])
+            try:
+                sourceKeyInt = int(sourceKeyStr)
+            except (TypeError, ValueError):
+                return None
+            if sourceKeyInt in qv_id_map:
+                return int(qv_id_map[sourceKeyInt])
+            return sourceKeyInt
+
+        def storeLabelValueMap(sourceKey, mapping):
+            label_to_value_for_source[str(sourceKey)] = dict(mapping or {})
 
         for item in ordered_items:
             raw = (item or "").strip()
@@ -1278,7 +2128,7 @@ def editform():
 
                 if not changed:
                     all_qv_ids.append(qv_id)
-                    qv_id_map[qv_id] = qv_id
+                    storeQvIdMapping(qv_id, qv_id)
                     if current_qv.response_type in ("select", "multi_select"):
                         m = {}
                         for opt in current_qv.options:
@@ -1286,9 +2136,9 @@ def editform():
                             val = (opt.option_value or "").strip()
                             if lbl:
                                 m[lbl] = val if val else lbl
-                        label_to_value_for_old_qvid[qv_id] = m
+                        storeLabelValueMap(qv_id, m)
                     else:
-                        label_to_value_for_old_qvid[qv_id] = {}
+                        storeLabelValueMap(qv_id, {})
                     continue
 
                 max_ver = (
@@ -1336,7 +2186,7 @@ def editform():
                                 )
                             )
                             m[lbl] = val if val else lbl
-                        label_to_value_for_old_qvid[qv_id] = m
+                        storeLabelValueMap(qv_id, m)
                     else:
                         for idx, label in enumerate(new_options_lines):
                             db.session.add(
@@ -1347,12 +2197,12 @@ def editform():
                                     sort_order=idx,
                                 )
                             )
-                        label_to_value_for_old_qvid[qv_id] = {lbl: lbl for lbl in new_options_lines}
+                        storeLabelValueMap(qv_id, {lbl: lbl for lbl in new_options_lines})
                 else:
-                    label_to_value_for_old_qvid[qv_id] = {}
+                    storeLabelValueMap(qv_id, {})
 
                 all_qv_ids.append(int(new_qv.question_version_id))
-                qv_id_map[qv_id] = int(new_qv.question_version_id)
+                storeQvIdMapping(qv_id, int(new_qv.question_version_id))
 
             elif kind == "new":
                 key = ident
@@ -1404,9 +2254,12 @@ def editform():
                                 sort_order=idx,
                             )
                         )
+                    storeLabelValueMap(key, {lbl: lbl for lbl in lines})
+                else:
+                    storeLabelValueMap(key, {})
 
                 all_qv_ids.append(int(qv.question_version_id))
-                qv_id_map[key] = int(qv.question_version_id)
+                storeQvIdMapping(key, int(qv.question_version_id))
 
         new_fv = FormVersion(
             form_id=form_obj.form_id,
@@ -1500,10 +2353,7 @@ def editform():
             e = (branch_state_enableds[i] if i < len(branch_state_enableds) else "").strip()
             if not s:
                 continue
-            try:
-                branch_state[int(s)] = (e == "1")
-            except ValueError:
-                continue
+            branch_state[str(s)] = (e == "1")
 
         map_sources = request.form.getlist("branch_map_source")
         map_options = request.form.getlist("branch_map_option")
@@ -1521,30 +2371,24 @@ def editform():
                 tgt_raw = (map_targets[i] if i < len(map_targets) else "").strip()
                 if not src_raw:
                     continue
-                try:
-                    src_old = int(src_raw)
-                except ValueError:
+                src_key = str(src_raw)
+                if src_key in branch_state and not branch_state.get(src_key):
                     continue
-                if src_old in branch_state and not branch_state.get(src_old):
-                    continue
-                used_sources.add(src_old)
+                used_sources.add(src_key)
                 if not tgt_raw or not opt_raw:
                     continue
-                try:
-                    tgt_old = int(tgt_raw)
-                except ValueError:
-                    continue
-                per_source.setdefault(src_old, []).append((opt_raw, tgt_old))
+                tgt_key = str(tgt_raw)
+                per_source.setdefault(src_key, []).append((opt_raw, tgt_key))
 
-            for src_old, pairs in per_source.items():
-                src = int(qv_id_map.get(src_old, src_old))
-                if src not in all_set:
+            for src_key, pairs in per_source.items():
+                src = resolveQvId(src_key)
+                if src is None or src not in all_set:
                     continue
                 pr = 0
-                for opt_label, tgt_old in pairs:
-                    opt_val = label_to_value_for_old_qvid.get(src_old, {}).get(opt_label, opt_label)
-                    tgt = int(qv_id_map.get(int(tgt_old), int(tgt_old)))
-                    if tgt not in all_set:
+                for opt_label, tgt_key in pairs:
+                    opt_val = label_to_value_for_source.get(str(src_key), {}).get(opt_label, opt_label)
+                    tgt = resolveQvId(tgt_key)
+                    if tgt is None or tgt not in all_set:
                         continue
                     db.session.add(
                         FormQuestionBranching(
@@ -1572,14 +2416,15 @@ def editform():
         )
         for b in old_show:
             src_old = int(b.source_question_version_id)
-            if src_old in branch_state and not branch_state.get(src_old):
+            src_old_key = str(src_old)
+            if src_old_key in branch_state and not branch_state.get(src_old_key):
                 continue
-            if submitted_has_maps and src_old in used_sources:
+            if submitted_has_maps and src_old_key in used_sources:
                 continue
 
-            src = int(qv_id_map.get(src_old, src_old))
+            src = resolveQvId(src_old_key)
             tgt_old = int(b.target_question_version_id)
-            tgt = int(qv_id_map.get(tgt_old, tgt_old))
+            tgt = resolveQvId(str(tgt_old))
 
             if src not in all_set or tgt not in all_set:
                 continue
@@ -1607,7 +2452,7 @@ def editform():
         flash(f"Form updated. New version: {next_version_number}", "success")
         return redirect(url_for("form"))
 
-    unsectioned_questions, sections_with_questions = _get_sections_for_version(latest_version.form_version_id)
+    unsectioned_questions, sections_with_questions = _getSectionsForVersion(latest_version.form_version_id)
     questions = unsectioned_questions + [q for s in sections_with_questions for q in (s.get("questions") or [])]
 
     value_to_label_by_qvid = {}
@@ -1652,25 +2497,63 @@ def editform():
         questions=questions,
         unsectioned_questions=unsectioned_questions,
         sections_with_questions=sections_with_questions,
-        is_developer=(session.get("role_name") == "developer"),
+        is_developer=currentUserHasRole("developer"),
         branch_maps=branch_maps,
     )
 
 
+# This route builds the stats page, charts, and configurable monitor cards.
 @app.route("/stats", methods=["GET", "POST"])
-@stats_required
+@statsRequired
 def stats():
+    canEditStats = currentUserHasRole("admin", "developer")
+    isDeveloper = currentUserHasRole("developer")
+    statsState = getStatsState()
+    visibleSectionKeys = [str(value) for value in statsState.get("visibleSectionKeys", []) if str(value).strip()]
+    visibleSummaryCardKeys = [str(value) for value in statsState.get("visibleSummaryCardKeys", []) if str(value).strip()]
+
+    sectionOptions = [
+        {"key": "trainingAlerts", "label": "Training alerts"},
+        {"key": "trackedQuestions", "label": "Tracked issue questions editor"},
+        {"key": "customMonitors", "label": "Custom monitored stats"},
+        {"key": "staffChart", "label": "People submitted about chart"},
+        {"key": "issueChart", "label": "Recurring issues chart"},
+        {"key": "trendChart", "label": "Trend over time chart"},
+        {"key": "topIssuesTable", "label": "Top recurring issues table"},
+        {"key": "staffTable", "label": "Staff needing attention table"},
+        {"key": "teamTable", "label": "Team breakdown table"},
+        {"key": "supervisorTable", "label": "Supervisor breakdown table"},
+        {"key": "recentFeedback", "label": "Recent feedback comments"},
+    ]
+    summaryCardOptions = [
+        {"key": "totalSubmissions", "label": "Total submissions"},
+        {"key": "uniqueStaffMembers", "label": "Unique staff members"},
+        {"key": "mostCommonIssue", "label": "Most common issue"},
+        {"key": "mostSubmittedAbout", "label": "Most submitted about"},
+        {"key": "highestVolumeTeam", "label": "Highest volume team"},
+    ]
+
     formObj = Form.query.filter_by(is_active=True).order_by(Form.form_id.desc()).first()
     if not formObj:
         return render_template(
             "stats.html",
             statsReady=False,
-            canEditStats=(session.get("role_name") in ("admin", "developer")),
-            isDeveloper=(session.get("role_name") == "developer"),
+            canEditStats=canEditStats,
+            isDeveloper=isDeveloper,
             trackedQuestionKeys=[],
             candidateQuestions=[],
             versionFilters=[],
             selectedFormVersionIds=[],
+            visibleSectionKeys=visibleSectionKeys,
+            visibleSummaryCardKeys=visibleSummaryCardKeys,
+            sectionOptions=sectionOptions,
+            summaryCardOptions=summaryCardOptions,
+            customMonitorItems=[],
+            customMonitorMeasureOptions=CUSTOM_MONITOR_MEASURE_OPTIONS,
+            monitorQuestionOptions=[],
+            customMonitorCards=[],
+            startDateValue="",
+            endDateValue="",
         )
 
     formVersions = (
@@ -1683,12 +2566,22 @@ def stats():
         return render_template(
             "stats.html",
             statsReady=False,
-            canEditStats=(session.get("role_name") in ("admin", "developer")),
-            isDeveloper=(session.get("role_name") == "developer"),
+            canEditStats=canEditStats,
+            isDeveloper=isDeveloper,
             trackedQuestionKeys=[],
             candidateQuestions=[],
             versionFilters=[],
             selectedFormVersionIds=[],
+            visibleSectionKeys=visibleSectionKeys,
+            visibleSummaryCardKeys=visibleSummaryCardKeys,
+            sectionOptions=sectionOptions,
+            summaryCardOptions=summaryCardOptions,
+            customMonitorItems=[],
+            customMonitorMeasureOptions=CUSTOM_MONITOR_MEASURE_OPTIONS,
+            monitorQuestionOptions=[],
+            customMonitorCards=[],
+            startDateValue="",
+            endDateValue="",
         )
 
     versionById = {int(item.form_version_id): item for item in formVersions}
@@ -1704,13 +2597,13 @@ def stats():
 
     questionById = {}
     optionLabelByQuestion = {}
-    latestQuestionKeySet = set()
     latestQuestionKeyById = {}
     subjectQuestionIds = []
     supervisorQuestionIds = []
     teamQuestionIds = []
     feedbackQuestionIds = []
     candidateQuestionMap = {}
+    monitorQuestionMap = {}
 
     for formVersionQuestion, questionVersion in allFormLinks:
         qid = int(questionVersion.question_version_id)
@@ -1723,16 +2616,23 @@ def stats():
         promptText = normalizeStatsText(questionVersion.prompt_text)
         promptKey = normalizeStatsKey(promptText)
 
-        if ("staff member" in promptKey or "member of staff" in promptKey or "requiring feedback" in promptKey) and "supervisor" not in promptKey:
+        if isSubjectNamePrompt(promptText):
             subjectQuestionIds.append(qid)
-        if "supervisor" in promptKey and "email" not in promptKey:
+        if isSupervisorNamePrompt(promptText):
             supervisorQuestionIds.append(qid)
-        if "team" in promptKey:
+        if isSubjectTeamPrompt(promptText):
             teamQuestionIds.append(qid)
-        if "comment" in promptKey or "feedback" in promptKey:
+        if isFeedbackCommentPrompt(promptText):
             feedbackQuestionIds.append(qid)
 
         isCandidate = questionVersion.response_type in ("select", "multi_select", "rating") and not isIdentityPrompt(promptText)
+        if promptText and promptKey not in monitorQuestionMap:
+            monitorQuestionMap[promptKey] = {
+                "questionKey": promptKey,
+                "promptText": promptText,
+                "responseType": questionVersion.response_type,
+            }
+
         if isCandidate and promptKey not in candidateQuestionMap:
             candidateQuestionMap[promptKey] = {
                 "questionKey": promptKey,
@@ -1742,11 +2642,11 @@ def stats():
 
         if int(formVersionQuestion.form_version_id) == int(latestVersion.form_version_id):
             latestQuestionKeyById[qid] = promptKey
-            latestQuestionKeySet.add(promptKey)
 
     candidateQuestions = sorted(candidateQuestionMap.values(), key=lambda item: item["promptText"].lower())
+    monitorQuestionOptions = sorted(monitorQuestionMap.values(), key=lambda item: item["promptText"].lower())
+    customMonitorItems = sanitizeCustomMonitorItems(statsState.get("customMonitorItems", []), monitorQuestionMap)
 
-    statsState = getStatsState()
     trackedQuestionKeys = [str(x) for x in statsState.get("trackedQuestionKeys", []) if str(x).strip() != ""]
     if not trackedQuestionKeys:
         legacyTrackedIds = [int(x) for x in statsState.get("trackedQuestionVersionIds", []) if str(x).isdigit()]
@@ -1755,23 +2655,88 @@ def stats():
             if promptKey and promptKey not in trackedQuestionKeys:
                 trackedQuestionKeys.append(promptKey)
 
-    if request.method == "POST" and session.get("role_name") in ("admin", "developer"):
-        selectedKeys = request.form.getlist("trackedQuestionKeys")
-        trackedQuestionKeys = [str(x) for x in selectedKeys if str(x).strip() != ""]
-        trackedQuestionVersionIds = [qid for qid, promptKey in latestQuestionKeyById.items() if promptKey in trackedQuestionKeys]
-        setStatsState(trackedQuestionKeys, trackedQuestionVersionIds)
-        flash("Stats tracked questions updated.", "success")
-        return redirect(url_for("stats", versions=request.form.getlist("versions")))
-
-    if not trackedQuestionKeys:
-        trackedQuestionKeys = [item["questionKey"] for item in candidateQuestions]
-
     selectedFormVersionIds = []
     for value in request.args.getlist("versions"):
         if str(value).isdigit() and int(value) in versionById:
             selectedFormVersionIds.append(int(value))
     if not selectedFormVersionIds:
         selectedFormVersionIds = [int(item.form_version_id) for item in formVersions]
+
+    startDateValue = (request.values.get("startDate") or "").strip()
+    endDateValue = (request.values.get("endDate") or "").strip()
+
+    if request.method == "POST" and canEditStats:
+        selectedKeys = request.form.getlist("trackedQuestionKeys")
+        trackedQuestionKeys = [str(x) for x in selectedKeys if str(x).strip() != ""]
+        trackedQuestionVersionIds = [qid for qid, promptKey in latestQuestionKeyById.items() if promptKey in trackedQuestionKeys]
+        visibleSectionKeys = request.form.getlist("visibleSectionKeys")
+        visibleSummaryCardKeys = request.form.getlist("visibleSummaryCardKeys")
+
+        removeMonitorIds = {normalizeStatsText(value) for value in request.form.getlist("removeCustomMonitorIds") if normalizeStatsText(value)}
+        customMonitorItemsToSave = []
+        existingMonitorIds = request.form.getlist("customMonitorIds")
+        existingMonitorTitles = request.form.getlist("customMonitorTitles")
+        existingMonitorQuestionKeys = request.form.getlist("customMonitorQuestionKeys")
+        existingMonitorMeasureTypes = request.form.getlist("customMonitorMeasureTypes")
+        allowedMeasureTypes = {item["key"] for item in CUSTOM_MONITOR_MEASURE_OPTIONS}
+
+        for index, monitorId in enumerate(existingMonitorIds):
+            cleanMonitorId = normalizeStatsText(monitorId)
+            if not cleanMonitorId or cleanMonitorId in removeMonitorIds:
+                continue
+            title = normalizeStatsText(existingMonitorTitles[index] if index < len(existingMonitorTitles) else "")
+            questionKey = normalizeStatsKey(existingMonitorQuestionKeys[index] if index < len(existingMonitorQuestionKeys) else "")
+            measureType = normalizeStatsText(existingMonitorMeasureTypes[index] if index < len(existingMonitorMeasureTypes) else "")
+            if questionKey not in monitorQuestionMap:
+                continue
+            if measureType not in allowedMeasureTypes:
+                measureType = "answeredCount"
+            if not title:
+                title = f"{monitorQuestionMap[questionKey]['promptText']} · {getCustomMonitorMeasureLabel(measureType)}"
+            customMonitorItemsToSave.append({
+                "monitorId": cleanMonitorId,
+                "title": title,
+                "questionKey": questionKey,
+                "measureType": measureType,
+            })
+
+        newCustomMonitorTitle = normalizeStatsText(request.form.get("newCustomMonitorTitle"))
+        newCustomMonitorQuestionKey = normalizeStatsKey(request.form.get("newCustomMonitorQuestionKey"))
+        newCustomMonitorMeasureType = normalizeStatsText(request.form.get("newCustomMonitorMeasureType"))
+        if newCustomMonitorMeasureType not in allowedMeasureTypes:
+            newCustomMonitorMeasureType = "answeredCount"
+        if newCustomMonitorTitle and newCustomMonitorQuestionKey in monitorQuestionMap:
+            customMonitorItemsToSave.append({
+                "monitorId": uuid.uuid4().hex[:12],
+                "title": newCustomMonitorTitle,
+                "questionKey": newCustomMonitorQuestionKey,
+                "measureType": newCustomMonitorMeasureType,
+            })
+
+        customMonitorItems = sanitizeCustomMonitorItems(customMonitorItemsToSave, monitorQuestionMap)
+        setStatsState(
+            trackedQuestionKeys,
+            trackedQuestionVersionIds,
+            visibleSectionKeys=visibleSectionKeys,
+            visibleSummaryCardKeys=visibleSummaryCardKeys,
+            customMonitorItems=customMonitorItems,
+        )
+        flash("Stats page options updated.", "success")
+        redirectParts = []
+        for value in request.form.getlist("versions"):
+            if str(value).isdigit() and int(value) in versionById:
+                redirectParts.append(f"versions={int(value)}")
+        if startDateValue:
+            redirectParts.append(f"startDate={startDateValue}")
+        if endDateValue:
+            redirectParts.append(f"endDate={endDateValue}")
+        redirectUrl = url_for("stats")
+        if redirectParts:
+            redirectUrl = f"{redirectUrl}?{'&'.join(redirectParts)}"
+        return redirect(redirectUrl)
+
+    if not trackedQuestionKeys:
+        trackedQuestionKeys = [item["questionKey"] for item in candidateQuestions]
 
     versionFilters = []
     for item in sorted(formVersions, key=lambda value: (int(value.version_number), int(value.form_version_id)), reverse=True):
@@ -1783,21 +2748,30 @@ def stats():
             "isSelected": int(item.form_version_id) in selectedFormVersionIds,
         })
 
-    submissions = (
+    submissionsQuery = (
         FormSubmission.query
         .filter(FormSubmission.form_id == formObj.form_id)
         .filter(FormSubmission.form_version_id.in_(selectedFormVersionIds))
-        .order_by(FormSubmission.submitted_at.asc(), FormSubmission.submission_id.asc())
-        .all()
     )
+
+    if startDateValue:
+        try:
+            startDate = datetime.strptime(startDateValue, "%Y-%m-%d")
+            submissionsQuery = submissionsQuery.filter(FormSubmission.submitted_at >= startDate)
+        except ValueError:
+            startDateValue = ""
+    if endDateValue:
+        try:
+            endDateExclusive = datetime.strptime(endDateValue, "%Y-%m-%d") + timedelta(days=1)
+            submissionsQuery = submissionsQuery.filter(FormSubmission.submitted_at < endDateExclusive)
+        except ValueError:
+            endDateValue = ""
+
+    submissions = submissionsQuery.order_by(FormSubmission.submitted_at.asc(), FormSubmission.submission_id.asc()).all()
     submissionIds = [int(sub.submission_id) for sub in submissions]
     answers = []
     if submissionIds:
-        answers = (
-            SubmissionAnswer.query
-            .filter(SubmissionAnswer.submission_id.in_(submissionIds))
-            .all()
-        )
+        answers = SubmissionAnswer.query.filter(SubmissionAnswer.submission_id.in_(submissionIds)).all()
 
     answersBySubmission = defaultdict(list)
     for answer in answers:
@@ -1816,6 +2790,8 @@ def stats():
     recentFeedback = []
 
     trackedQuestionKeySet = set(trackedQuestionKeys)
+    answerCounterByPromptKey = defaultdict(Counter)
+    answeredSubmissionCounterByPromptKey = Counter()
 
     for submission in submissions:
         submissionMonthKey = monthKeyFromDate(submission.submitted_at)
@@ -1834,27 +2810,28 @@ def stats():
             questionVersion = questionById[qid]
             promptText = normalizeStatsText(questionVersion.prompt_text)
             promptKey = normalizeStatsKey(promptText)
-            answerLabels = []
-            if answer.answer_option_value is not None:
-                optionValue = normalizeStatsText(answer.answer_option_value)
-                answerLabels.append(optionLabelByQuestion.get(qid, {}).get(optionValue, optionValue))
-            elif answer.answer_text is not None:
-                if questionVersion.response_type == "multi_select":
-                    answerLabels.extend([normalizeStatsText(value) for value in str(answer.answer_text).splitlines() if normalizeStatsText(value) != ""])
-                else:
-                    answerLabels.append(normalizeStatsText(answer.answer_text))
-            elif answer.answer_number is not None:
-                numberText = str(answer.answer_number)
-                if isinstance(answer.answer_number, Decimal) and answer.answer_number == answer.answer_number.to_integral():
-                    numberText = str(int(answer.answer_number))
-                answerLabels.append(numberText)
+            answerLabels = buildAnswerLabelList(questionVersion, answer, optionLabelByQuestion)
+
+            if answerLabels:
+                answeredSubmissionCounterByPromptKey[promptKey] += 1
+                for answerLabel in answerLabels:
+                    cleanAnswerLabel = normalizeStatsText(answerLabel)
+                    if cleanAnswerLabel:
+                        answerCounterByPromptKey[promptKey][cleanAnswerLabel] += 1
 
             if qid in subjectQuestionIds and answerLabels:
-                subjectName = answerLabels[0]
+                candidateValue = sanitizeStatsEntityValue(answerLabels[0], "staff")
+                if candidateValue:
+                    subjectName = candidateValue
             if qid in supervisorQuestionIds and answerLabels:
-                supervisorName = answerLabels[0]
+                candidateValue = sanitizeStatsEntityValue(answerLabels[0], "supervisor")
+                if candidateValue:
+                    supervisorName = candidateValue
             if qid in teamQuestionIds and answerLabels:
-                teamValues.extend(answerLabels)
+                for answerLabel in answerLabels:
+                    candidateValue = sanitizeStatsEntityValue(answerLabel, "team")
+                    if candidateValue and candidateValue not in teamValues:
+                        teamValues.append(candidateValue)
             if qid in feedbackQuestionIds and answerLabels and not feedbackText:
                 feedbackText = answerLabels[0]
 
@@ -1894,13 +2871,17 @@ def stats():
             "versionText": versionText,
         })
 
-    topStaff = staffCounter.most_common(10)
+    knownStaffCounter = Counter({name: count for name, count in staffCounter.items() if normalizeStatsKey(name) != "unknown"})
+    knownTeamCounter = Counter({name: count for name, count in teamCounter.items() if normalizeStatsKey(name) != "unknown"})
+    knownSupervisorCounter = Counter({name: count for name, count in supervisorCounter.items() if normalizeStatsKey(name) != "unknown"})
+
+    topStaff = knownStaffCounter.most_common(10)
     topIssues = issueCounter.most_common(10)
-    topTeams = teamCounter.most_common(10)
-    topSupervisors = supervisorCounter.most_common(10)
+    topTeams = knownTeamCounter.most_common(10) or teamCounter.most_common(10)
+    topSupervisors = knownSupervisorCounter.most_common(10) or supervisorCounter.most_common(10)
 
     staffTable = []
-    for staffName, count in staffCounter.most_common(15):
+    for staffName, count in knownStaffCounter.most_common(15):
         staffTable.append({
             "staffName": staffName,
             "submissionCount": count,
@@ -1917,7 +2898,7 @@ def stats():
         })
 
     supervisorTable = []
-    for supervisorName, count in supervisorCounter.most_common(15):
+    for supervisorName, count in (knownSupervisorCounter.most_common(15) or supervisorCounter.most_common(15)):
         supervisorTable.append({
             "supervisorName": supervisorName,
             "submissionCount": count,
@@ -1948,17 +2929,7 @@ def stats():
             promptKey = normalizeStatsKey(promptText)
             if promptKey not in trackedQuestionKeySet:
                 continue
-            answerValues = []
-            if answer.answer_option_value is not None:
-                optionValue = normalizeStatsText(answer.answer_option_value)
-                answerValues.append(optionLabelByQuestion.get(qid, {}).get(optionValue, optionValue))
-            elif answer.answer_text is not None:
-                if questionVersion.response_type == "multi_select":
-                    answerValues.extend([normalizeStatsText(value) for value in str(answer.answer_text).splitlines() if normalizeStatsText(value) != ""])
-                else:
-                    answerValues.append(normalizeStatsText(answer.answer_text))
-            elif answer.answer_number is not None:
-                answerValues.append(str(answer.answer_number))
+            answerValues = buildAnswerLabelList(questionVersion, answer, optionLabelByQuestion)
             for answerValue in answerValues:
                 if answerLooksLikeIssue(promptText, answerValue):
                     issueCountForSubmission += 1
@@ -1983,13 +2954,25 @@ def stats():
     else:
         alertItems.append(f"Issue volume is unchanged across the last two 30 day windows ({recentIssues}).")
 
-    summaryCards = [
-        {"label": "Total submissions", "value": len(submissions)},
-        {"label": "Unique staff members", "value": len([name for name in staffCounter.keys() if normalizeStatsKey(name) != "unknown"])},
-        {"label": "Most common issue", "value": topIssues[0][0] if topIssues else "No issue data yet"},
-        {"label": "Most submitted about", "value": topStaff[0][0] if topStaff else "No data yet"},
-        {"label": "Highest volume team", "value": topTeams[0][0] if topTeams else "No data yet"},
+    summaryCardDefinitions = [
+        {"key": "totalSubmissions", "label": "Total submissions", "value": len(submissions)},
+        {"key": "uniqueStaffMembers", "label": "Unique staff members", "value": len(knownStaffCounter)},
+        {"key": "mostCommonIssue", "label": "Most common issue", "value": topIssues[0][0] if topIssues else "No issue data yet"},
+        {"key": "mostSubmittedAbout", "label": "Most submitted about", "value": topStaff[0][0] if topStaff else "No data yet"},
+        {"key": "highestVolumeTeam", "label": "Highest volume team", "value": topTeams[0][0] if topTeams else "No data yet"},
     ]
+    visibleSummaryCardKeySet = set(visibleSummaryCardKeys or DEFAULT_VISIBLE_SUMMARY_CARD_KEYS)
+    summaryCards = [item for item in summaryCardDefinitions if item["key"] in visibleSummaryCardKeySet]
+
+    customMonitorCards = []
+    for monitorItem in customMonitorItems:
+        questionInfo = monitorQuestionMap.get(monitorItem["questionKey"])
+        customMonitorCards.append({
+            "title": monitorItem["title"],
+            "value": buildCustomMonitorValue(monitorItem, answerCounterByPromptKey, answeredSubmissionCounterByPromptKey),
+            "questionPrompt": questionInfo["promptText"] if questionInfo else monitorItem["questionKey"],
+            "measureLabel": getCustomMonitorMeasureLabel(monitorItem["measureType"]),
+        })
 
     chartData = {
         "staffLabels": [name for name, _ in topStaff],
@@ -2011,8 +2994,8 @@ def stats():
     return render_template(
         "stats.html",
         statsReady=True,
-        canEditStats=(session.get("role_name") in ("admin", "developer")),
-        isDeveloper=(session.get("role_name") == "developer"),
+        canEditStats=canEditStats,
+        isDeveloper=isDeveloper,
         trackedQuestionKeys=trackedQuestionKeys,
         candidateQuestions=candidateQuestions,
         summaryCards=summaryCards,
@@ -2026,6 +3009,16 @@ def stats():
         alertItems=alertItems,
         versionFilters=versionFilters,
         selectedFormVersionIds=selectedFormVersionIds,
+        visibleSectionKeys=visibleSectionKeys,
+        visibleSummaryCardKeys=visibleSummaryCardKeys,
+        sectionOptions=sectionOptions,
+        summaryCardOptions=summaryCardOptions,
+        customMonitorItems=customMonitorItems,
+        customMonitorMeasureOptions=CUSTOM_MONITOR_MEASURE_OPTIONS,
+        monitorQuestionOptions=monitorQuestionOptions,
+        customMonitorCards=customMonitorCards,
+        startDateValue=startDateValue,
+        endDateValue=endDateValue,
     )
 
 if __name__ == "__main__":

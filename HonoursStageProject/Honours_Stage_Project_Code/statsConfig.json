@@ -1,3 +1,25 @@
 {
-  "trackedQuestionVersionIds": []
+  "trackedQuestionKeys": [],
+  "trackedQuestionVersionIds": [],
+  "visibleSectionKeys": [
+    "trainingAlerts",
+    "trackedQuestions",
+    "customMonitors",
+    "staffChart",
+    "issueChart",
+    "trendChart",
+    "topIssuesTable",
+    "staffTable",
+    "teamTable",
+    "supervisorTable",
+    "recentFeedback"
+  ],
+  "visibleSummaryCardKeys": [
+    "totalSubmissions",
+    "uniqueStaffMembers",
+    "mostCommonIssue",
+    "mostSubmittedAbout",
+    "highestVolumeTeam"
+  ],
+  "customMonitorItems": []
 }

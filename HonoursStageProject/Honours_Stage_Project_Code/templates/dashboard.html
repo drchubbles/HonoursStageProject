@@ -4,10 +4,10 @@
 {% block content %}
 <h1>Completed Forms</h1>
 
-{% if session.get("role_name") == "admin" %}
+{% if canManageAccounts %}
   <div class="card" style="margin-bottom:18px;">
-    <h2 class="cardTitleTight">Admin tools</h2>
-    <p class="muted">Create accounts and issue one-time setup or reset codes.</p>
+    <h2 class="cardTitleTight">Account tools</h2>
+    <p class="muted">Create accounts and issue one-time setup or reset codes. Developers can access the same account tools as admins.</p>
     <a class="btn" href="{{ url_for('manage_users') }}">Manage accounts</a>
   </div>
 {% endif %}
@@ -19,6 +19,15 @@
         <p class="card-title">{{ f.title }}</p>
         <p class="muted">Submitted: {{ sub.submitted_at }}</p>
         <p class="muted">Version: {{ fv.version_number }}{% if is_admin %} · By: {{ u.username }}{% endif %}</p>
+        {% if sub.summary_text %}
+          <p style="margin-top:10px; line-height:1.5;">{{ sub.summary_text[:260] }}{% if sub.summary_text|length > 260 %}…{% endif %}</p>
+        {% elif sub.summary_status == 'disabled' %}
+          <p class="muted" style="margin-top:10px;">Local summariser disabled for this environment.</p>
+        {% elif sub.summary_status == 'error' %}
+          <p class="muted" style="margin-top:10px;">Local summary could not be generated.</p>
+        {% else %}
+          <p class="muted" style="margin-top:10px;">Summary will appear here after generation.</p>
+        {% endif %}
         <div class="card-footer">
           <a class="btn" href="{{ url_for('view_submission', submission_id=sub.submission_id) }}">View form</a>
         </div>

@@ -1,3 +1,4 @@
+{# This template renders the configurable stats dashboard and charts. #}
 {% extends "base.html" %}
 {% block title %}Stats{% endblock %}
 
@@ -81,7 +82,7 @@
   }
   .trackedQuestionList {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 10px;
     margin-top: 14px;
     margin-bottom: 14px;
@@ -117,6 +118,74 @@
     height: 100% !important;
     display: block;
   }
+  .filterGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin-top: 12px;
+    margin-bottom: 12px;
+  }
+  .filterField label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .filterField input[type="date"] {
+    width: 100%;
+  }
+  .statsConfigColumns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .statsDropdown {
+    border: 1px solid #d7dbe3;
+    border-radius: 14px;
+    background: #f8fafc;
+    padding: 10px 14px;
+  }
+  .statsDropdown summary {
+    cursor: pointer;
+    font-weight: 700;
+    list-style: none;
+  }
+  .statsDropdown summary::-webkit-details-marker {
+    display: none;
+  }
+  .statsDropdownBody {
+    margin-top: 16px;
+  }
+  .customMonitorEditorList {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+    margin-bottom: 16px;
+  }
+  .customMonitorEditorItem {
+    border: 1px solid #dfe5ee;
+    border-radius: 12px;
+    padding: 12px;
+    background: #f8fafc;
+  }
+  .customMonitorEditorGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .customMonitorEditorGrid label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .customMonitorEditorGrid input,
+  .customMonitorEditorGrid select {
+    width: 100%;
+  }
+  .customMonitorMeta {
+    margin-top: 6px;
+    color: #657086;
+    font-size: 0.9rem;
+  }
 </style>
 
 <h1>Training Insights</h1>
@@ -128,9 +197,19 @@
   </div>
 {% else %}
   <section class="statsPanel" style="margin-bottom:20px;">
-    <h2>Form version filter</h2>
-    <p class="mutedStat">All form versions are shown by default. Untick any versions you do not want included.</p>
+    <h2>Stats filters</h2>
+    <p class="mutedStat">Use the date range and version filters to control the period the dashboard is analysing.</p>
     <form method="GET">
+      <div class="filterGrid">
+        <div class="filterField">
+          <label for="startDate">From date</label>
+          <input id="startDate" type="date" name="startDate" value="{{ startDateValue }}">
+        </div>
+        <div class="filterField">
+          <label for="endDate">To date</label>
+          <input id="endDate" type="date" name="endDate" value="{{ endDateValue }}">
+        </div>
+      </div>
       <div class="trackedQuestionList">
         {% for item in versionFilters %}
           <div class="trackedQuestionItem">
@@ -144,206 +223,354 @@
           </div>
         {% endfor %}
       </div>
-      <button type="submit" class="primaryButton">Apply version filter</button>
+      <button type="submit" class="primaryButton">Apply filters</button>
     </form>
   </section>
 
-  <div class="statsGrid">
-    {% for card in summaryCards %}
-      <div class="statsCard">
-        <div class="statsCardLabel">{{ card.label }}</div>
-        <div class="statsCardValue">{{ card.value }}</div>
-      </div>
-    {% endfor %}
-  </div>
+  {% if canEditStats %}
+    <section class="statsPanel" style="margin-bottom:20px;">
+      <details class="statsDropdown">
+        <summary>Stats page options</summary>
+        <div class="statsDropdownBody">
+          <p class="mutedStat">Admins and developers can choose which issue questions feed the stats, which panels appear on this page, and add their own custom monitored stat cards.</p>
+          <form method="POST">
+            <div class="statsConfigColumns">
+              <div>
+                <h3 style="margin-top:0;">Tracked issue questions</h3>
+                <div class="trackedQuestionList">
+                  {% for item in candidateQuestions %}
+                    <div class="trackedQuestionItem">
+                      <label>
+                        <input type="checkbox" name="trackedQuestionKeys" value="{{ item.questionKey }}" {% if item.questionKey in trackedQuestionKeys %}checked{% endif %}>
+                        <span>
+                          <strong>{{ item.promptText }}</strong><br>
+                          <span class="mutedStat">{{ item.responseType }}</span>
+                        </span>
+                      </label>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+              <div>
+                <h3 style="margin-top:0;">Summary cards shown</h3>
+                <div class="trackedQuestionList">
+                  {% for item in summaryCardOptions %}
+                    <div class="trackedQuestionItem">
+                      <label>
+                        <input type="checkbox" name="visibleSummaryCardKeys" value="{{ item.key }}" {% if item.key in visibleSummaryCardKeys %}checked{% endif %}>
+                        <span><strong>{{ item.label }}</strong></span>
+                      </label>
+                    </div>
+                  {% endfor %}
+                </div>
 
-  <div class="statsTwoCol">
-    <section class="statsPanel">
+                <h3>Panels shown</h3>
+                <div class="trackedQuestionList">
+                  {% for item in sectionOptions %}
+                    <div class="trackedQuestionItem">
+                      <label>
+                        <input type="checkbox" name="visibleSectionKeys" value="{{ item.key }}" {% if item.key in visibleSectionKeys %}checked{% endif %}>
+                        <span><strong>{{ item.label }}</strong></span>
+                      </label>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <h3>Custom monitored stats</h3>
+            <p class="mutedStat">Add your own stat cards by choosing a question and how you want it measured.</p>
+
+            {% if customMonitorItems %}
+              <div class="customMonitorEditorList">
+                {% for item in customMonitorItems %}
+                  <div class="customMonitorEditorItem">
+                    <input type="hidden" name="customMonitorIds" value="{{ item.monitorId }}">
+                    <div class="customMonitorEditorGrid">
+                      <div>
+                        <label>Card title</label>
+                        <input type="text" name="customMonitorTitles" value="{{ item.title }}">
+                      </div>
+                      <div>
+                        <label>Question</label>
+                        <select name="customMonitorQuestionKeys">
+                          {% for question in monitorQuestionOptions %}
+                            <option value="{{ question.questionKey }}" {% if question.questionKey == item.questionKey %}selected{% endif %}>{{ question.promptText }}</option>
+                          {% endfor %}
+                        </select>
+                      </div>
+                      <div>
+                        <label>Measure</label>
+                        <select name="customMonitorMeasureTypes">
+                          {% for measure in customMonitorMeasureOptions %}
+                            <option value="{{ measure.key }}" {% if measure.key == item.measureType %}selected{% endif %}>{{ measure.label }}</option>
+                          {% endfor %}
+                        </select>
+                      </div>
+                      <div>
+                        <label>Remove</label>
+                        <label style="display:flex; gap:8px; align-items:center; font-weight:400; margin-top:10px;">
+                          <input type="checkbox" name="removeCustomMonitorIds" value="{{ item.monitorId }}"> Remove this custom stat
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% endif %}
+
+            <div class="customMonitorEditorItem">
+              <h4 style="margin-top:0;">Add a new custom stat</h4>
+              <div class="customMonitorEditorGrid">
+                <div>
+                  <label for="newCustomMonitorTitle">Card title</label>
+                  <input id="newCustomMonitorTitle" type="text" name="newCustomMonitorTitle" placeholder="Example: MX1 issues recorded">
+                </div>
+                <div>
+                  <label for="newCustomMonitorQuestionKey">Question</label>
+                  <select id="newCustomMonitorQuestionKey" name="newCustomMonitorQuestionKey">
+                    <option value="">Select a question</option>
+                    {% for question in monitorQuestionOptions %}
+                      <option value="{{ question.questionKey }}">{{ question.promptText }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <label for="newCustomMonitorMeasureType">Measure</label>
+                  <select id="newCustomMonitorMeasureType" name="newCustomMonitorMeasureType">
+                    {% for measure in customMonitorMeasureOptions %}
+                      <option value="{{ measure.key }}">{{ measure.label }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {% for value in selectedFormVersionIds %}
+              <input type="hidden" name="versions" value="{{ value }}">
+            {% endfor %}
+            <input type="hidden" name="startDate" value="{{ startDateValue }}">
+            <input type="hidden" name="endDate" value="{{ endDateValue }}">
+            <button type="submit" class="primaryButton">Save stats page options</button>
+          </form>
+        </div>
+      </details>
+    </section>
+  {% endif %}
+
+  {% if 'customMonitors' in visibleSectionKeys and customMonitorCards %}
+    <section class="statsPanel" style="margin-bottom:20px;">
+      <h2>Custom monitored stats</h2>
+      <div class="statsGrid">
+        {% for item in customMonitorCards %}
+          <div class="statsCard">
+            <div class="statsCardLabel">{{ item.title }}</div>
+            <div class="statsCardValue">{{ item.value }}</div>
+            <div class="customMonitorMeta">{{ item.questionPrompt }} · {{ item.measureLabel }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if summaryCards %}
+    <div class="statsGrid">
+      {% for card in summaryCards %}
+        <div class="statsCard">
+          <div class="statsCardLabel">{{ card.label }}</div>
+          <div class="statsCardValue">{{ card.value }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if 'trainingAlerts' in visibleSectionKeys %}
+    <section class="statsPanel" style="margin-bottom:20px;">
       <h2>Training alerts</h2>
       <ul class="statsList">
         {% for item in alertItems %}
           <li>{{ item }}</li>
+        {% else %}
+          <li>No alert data yet.</li>
         {% endfor %}
       </ul>
     </section>
+  {% endif %}
 
-    {% if canEditStats %}
-      <section class="statsPanel">
-        <h2>Tracked issue questions</h2>
-        <p class="mutedStat">Developers and admins can choose which question fields feed the recurring issue charts and tables.</p>
-        <form method="POST">
-          <div class="trackedQuestionList">
-            {% for item in candidateQuestions %}
-              <div class="trackedQuestionItem">
-                <label>
-                  <input type="checkbox" name="trackedQuestionKeys" value="{{ item.questionKey }}" {% if item.questionKey in trackedQuestionKeys %}checked{% endif %}>
-                  <span>
-                    <strong>{{ item.promptText }}</strong><br>
-                    <span class="mutedStat">{{ item.responseType }}</span>
-                  </span>
-                </label>
-              </div>
-            {% endfor %}
+  {% if ('staffChart' in visibleSectionKeys) or ('issueChart' in visibleSectionKeys) %}
+    <div class="statsTwoCol">
+      {% if 'staffChart' in visibleSectionKeys %}
+        <section class="statsPanel statsChartPanel">
+          <h2>People with the most forms submitted about them</h2>
+          <div class="chartWrap"><canvas id="staffChart"></canvas></div>
+        </section>
+      {% endif %}
+
+      {% if 'issueChart' in visibleSectionKeys %}
+        <section class="statsPanel statsChartPanel">
+          <h2>Common recurring issues</h2>
+          <div class="chartWrap"><canvas id="issueChart"></canvas></div>
+        </section>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if 'trendChart' in visibleSectionKeys %}
+    <section class="statsPanel statsChartPanel" style="margin-bottom:20px;">
+      <h2>Trend over time</h2>
+      <p class="mutedStat">Use this to see whether feedback volume and issue volume are improving after training is introduced.</p>
+      <div class="chartWrap chartWrapLarge"><canvas id="trendChart"></canvas></div>
+    </section>
+  {% endif %}
+
+  {% if ('topIssuesTable' in visibleSectionKeys) or ('staffTable' in visibleSectionKeys) %}
+    <div class="statsTwoCol">
+      {% if 'topIssuesTable' in visibleSectionKeys %}
+        <section class="statsPanel">
+          <h2>Top recurring issues</h2>
+          <div class="statsTableWrap">
+            <table class="statsTable">
+              <thead>
+                <tr>
+                  <th>Issue</th>
+                  <th>Count</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for issueName, issueCount in topIssues %}
+                  <tr>
+                    <td>{{ issueName }}</td>
+                    <td>{{ issueCount }}</td>
+                  </tr>
+                {% else %}
+                  <tr>
+                    <td colspan="2">No issue data yet.</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
-          {% for value in selectedFormVersionIds %}
-            <input type="hidden" name="versions" value="{{ value }}">
-          {% endfor %}
-          <button type="submit" class="primaryButton">Save tracked questions</button>
-        </form>
-      </section>
-    {% endif %}
-  </div>
+        </section>
+      {% endif %}
 
-  <div class="statsTwoCol">
-    <section class="statsPanel statsChartPanel">
-      <h2>People with the most forms submitted about them</h2>
-      <div class="chartWrap"><canvas id="staffChart"></canvas></div>
-    </section>
+      {% if 'staffTable' in visibleSectionKeys %}
+        <section class="statsPanel">
+          <h2>Staff needing attention</h2>
+          <div class="statsTableWrap">
+            <table class="statsTable">
+              <thead>
+                <tr>
+                  <th>Staff member</th>
+                  <th>Submissions</th>
+                  <th>Supervisor</th>
+                  <th>Top issue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in staffTable %}
+                  <tr>
+                    <td>{{ row.staffName }}</td>
+                    <td>{{ row.submissionCount }}</td>
+                    <td>{{ row.supervisorName }}</td>
+                    <td>{{ row.topIssue }}</td>
+                  </tr>
+                {% else %}
+                  <tr>
+                    <td colspan="4">No staff data yet.</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
+    </div>
+  {% endif %}
 
-    <section class="statsPanel statsChartPanel">
-      <h2>Common recurring issues</h2>
-      <div class="chartWrap"><canvas id="issueChart"></canvas></div>
-    </section>
-  </div>
+  {% if ('teamTable' in visibleSectionKeys) or ('supervisorTable' in visibleSectionKeys) %}
+    <div class="statsTwoCol">
+      {% if 'teamTable' in visibleSectionKeys %}
+        <section class="statsPanel">
+          <h2>Team breakdown</h2>
+          <div class="statsTableWrap">
+            <table class="statsTable">
+              <thead>
+                <tr>
+                  <th>Team</th>
+                  <th>Submissions</th>
+                  <th>Top issue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in teamTable %}
+                  <tr>
+                    <td>{{ row.teamName }}</td>
+                    <td>{{ row.submissionCount }}</td>
+                    <td>{{ row.topIssue }}</td>
+                  </tr>
+                {% else %}
+                  <tr>
+                    <td colspan="3">No team data yet.</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
 
-  <section class="statsPanel statsChartPanel" style="margin-bottom:20px;">
-    <h2>Trend over time</h2>
-    <p class="mutedStat">Use this to see whether feedback volume and issue volume are improving after training is introduced.</p>
-    <div class="chartWrap chartWrapLarge"><canvas id="trendChart"></canvas></div>
-  </section>
+      {% if 'supervisorTable' in visibleSectionKeys %}
+        <section class="statsPanel">
+          <h2>Supervisor breakdown</h2>
+          <div class="statsTableWrap">
+            <table class="statsTable">
+              <thead>
+                <tr>
+                  <th>Supervisor</th>
+                  <th>Submissions</th>
+                  <th>Top issue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in supervisorTable %}
+                  <tr>
+                    <td>{{ row.supervisorName }}</td>
+                    <td>{{ row.submissionCount }}</td>
+                    <td>{{ row.topIssue }}</td>
+                  </tr>
+                {% else %}
+                  <tr>
+                    <td colspan="3">No supervisor data yet.</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
+    </div>
+  {% endif %}
 
-  <div class="statsTwoCol">
+  {% if 'recentFeedback' in visibleSectionKeys %}
     <section class="statsPanel">
-      <h2>Top recurring issues</h2>
-      <div class="statsTableWrap">
-        <table class="statsTable">
-          <thead>
-            <tr>
-              <th>Issue</th>
-              <th>Count</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for issueName, issueCount in topIssues %}
-              <tr>
-                <td>{{ issueName }}</td>
-                <td>{{ issueCount }}</td>
-              </tr>
-            {% else %}
-              <tr>
-                <td colspan="2">No issue data yet.</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+      <h2>Recent feedback comments</h2>
+      {% for item in recentFeedback %}
+        <div class="feedbackItem">
+          <strong>{{ item.staffName }}</strong> · {{ item.supervisorName }} · {{ item.versionText }} · {{ item.submittedAtText }}<br>
+          <span>{{ item.feedbackText }}</span>
+        </div>
+      {% else %}
+        <p>No recent feedback comments yet.</p>
+      {% endfor %}
     </section>
-
-    <section class="statsPanel">
-      <h2>Staff needing attention</h2>
-      <div class="statsTableWrap">
-        <table class="statsTable">
-          <thead>
-            <tr>
-              <th>Staff member</th>
-              <th>Submissions</th>
-              <th>Supervisor</th>
-              <th>Top issue</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in staffTable %}
-              <tr>
-                <td>{{ row.staffName }}</td>
-                <td>{{ row.submissionCount }}</td>
-                <td>{{ row.supervisorName }}</td>
-                <td>{{ row.topIssue }}</td>
-              </tr>
-            {% else %}
-              <tr>
-                <td colspan="4">No staff data yet.</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </div>
-
-  <div class="statsTwoCol">
-    <section class="statsPanel">
-      <h2>Team breakdown</h2>
-      <div class="statsTableWrap">
-        <table class="statsTable">
-          <thead>
-            <tr>
-              <th>Team</th>
-              <th>Submissions</th>
-              <th>Top issue</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in teamTable %}
-              <tr>
-                <td>{{ row.teamName }}</td>
-                <td>{{ row.submissionCount }}</td>
-                <td>{{ row.topIssue }}</td>
-              </tr>
-            {% else %}
-              <tr>
-                <td colspan="3">No team data yet.</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="statsPanel">
-      <h2>Supervisor breakdown</h2>
-      <div class="statsTableWrap">
-        <table class="statsTable">
-          <thead>
-            <tr>
-              <th>Supervisor</th>
-              <th>Submissions</th>
-              <th>Top issue</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in supervisorTable %}
-              <tr>
-                <td>{{ row.supervisorName }}</td>
-                <td>{{ row.submissionCount }}</td>
-                <td>{{ row.topIssue }}</td>
-              </tr>
-            {% else %}
-              <tr>
-                <td colspan="3">No supervisor data yet.</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </div>
-
-  <section class="statsPanel">
-    <h2>Recent feedback comments</h2>
-    {% for item in recentFeedback %}
-      <div class="feedbackItem">
-        <strong>{{ item.staffName }}</strong> · {{ item.supervisorName }} · {{ item.versionText }} · {{ item.submittedAtText }}<br>
-        <span>{{ item.feedbackText }}</span>
-      </div>
-    {% else %}
-      <p>No recent feedback comments yet.</p>
-    {% endfor %}
-  </section>
+  {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     const chartData = {{ chartData | tojson }};
+    const visibleSectionKeys = {{ visibleSectionKeys | tojson }};
 
+    // This function builds a bar chart for the supplied stats data.
     function makeBarChart(canvasId, labels, values, labelText) {
       const canvas = document.getElementById(canvasId);
       if (!canvas || !labels || !labels.length) return;
@@ -367,6 +594,7 @@
       });
     }
 
+    // This function builds a pie chart for the supplied stats data.
     function makePieChart(canvasId, labels, values) {
       const canvas = document.getElementById(canvasId);
       if (!canvas || !labels || !labels.length) return;
@@ -384,10 +612,10 @@
       });
     }
 
+    // This function builds the monthly submissions trend chart.
     function makeTrendChart() {
       const canvas = document.getElementById('trendChart');
       if (!canvas || !chartData.trendLabels || !chartData.trendLabels.length) return;
-      canvas.height = 320;
       canvas.height = 340;
       new Chart(canvas, {
         type: 'line',
@@ -416,9 +644,15 @@
       });
     }
 
-    makeBarChart('staffChart', chartData.staffLabels, chartData.staffValues, 'Submissions');
-    makePieChart('issueChart', chartData.issueLabels, chartData.issueValues);
-    makeTrendChart();
+    if (visibleSectionKeys.includes('staffChart')) {
+      makeBarChart('staffChart', chartData.staffLabels, chartData.staffValues, 'Submissions');
+    }
+    if (visibleSectionKeys.includes('issueChart')) {
+      makePieChart('issueChart', chartData.issueLabels, chartData.issueValues);
+    }
+    if (visibleSectionKeys.includes('trendChart')) {
+      makeTrendChart();
+    }
   </script>
 {% endif %}
 {% endblock %}

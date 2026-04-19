@@ -3,7 +3,7 @@
 
 {% block content %}
 <h1>Manage accounts</h1>
-<p class="pageSub">Create accounts, issue first-time setup codes, and generate password reset codes.</p>
+<p class="pageSub">Create accounts, change allowed account roles, issue first-time setup codes, and generate password reset codes.</p>
 
 {% if revealCode %}
   <div class="card codeRevealCard">
@@ -34,6 +34,12 @@
         {% endfor %}
       </select>
 
+      {% if currentRoleName == 'admin' %}
+        <p class="muted">Admins can create Standard and Admin accounts. Only developers can create Developer accounts.</p>
+      {% elif currentRoleName == 'developer' %}
+        <p class="muted">Developers can create Standard, Admin, and Developer accounts.</p>
+      {% endif %}
+
       <button type="submit">Create account</button>
     </form>
   </div>
@@ -58,7 +64,28 @@
           <tr>
             <td>{{ userRow.username }}</td>
             <td>{{ userRow.display_name or '-' }}</td>
-            <td>{{ userRow.role.role_name|capitalize if userRow.role else '-' }}</td>
+            <td>
+              {% set roleChoices = userRoleOptionMap.get(userRow.user_id, []) %}
+              {% if roleChoices %}
+                <form method="POST" action="{{ url_for('manage_users') }}" class="inlineActions" style="gap:8px; align-items:center; flex-wrap:wrap;">
+                  <input type="hidden" name="form_action" value="change_role">
+                  <input type="hidden" name="user_id" value="{{ userRow.user_id }}">
+                  <select name="new_role_id" {% if userRow.user_id == session.get('user_id') %}disabled{% endif %}>
+                    {% for role in roleChoices %}
+                      <option value="{{ role.role_id }}" {% if userRow.role_id == role.role_id %}selected{% endif %}>{{ role.role_name|capitalize }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="submit" class="secondaryButton" {% if userRow.user_id == session.get('user_id') %}disabled{% endif %}>Update role</button>
+                </form>
+                {% if userRow.user_id == session.get('user_id') %}
+                  <div class="muted">You cannot change your own role here.</div>
+                {% elif currentRoleName == 'admin' and (userRow.role.role_name|lower) == 'developer' %}
+                  <div class="muted">Developer accounts can only be changed by developers.</div>
+                {% endif %}
+              {% else %}
+                {{ userRow.role.role_name|capitalize if userRow.role else '-' }}
+              {% endif %}
+            </td>
             <td>{% if userRow.must_set_password %}Setup required{% else %}Active{% endif %}</td>
             <td>{% if userRow.recovery_questions_set %}Configured{% else %}Not set{% endif %}</td>
             <td>

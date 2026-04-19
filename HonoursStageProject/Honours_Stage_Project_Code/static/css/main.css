@@ -700,3 +700,92 @@ header {
         grid-template-columns: 1fr;
     }
 }
+
+
+.toolbarActions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.systemBanner {
+    margin: 0 0 14px 0;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(146, 64, 14, 0.24);
+    background: rgba(254, 243, 199, 0.9);
+    color: #7c2d12;
+    font-weight: 600;
+}
+
+.emailEditorBackdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 80;
+}
+
+.emailEditorModal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(760px, calc(100vw - 24px));
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    z-index: 81;
+    background: #ffffff;
+    border: 1px solid rgba(15, 23, 42, 0.14);
+    border-radius: 18px;
+    box-shadow: 0 24px 50px rgba(15, 23, 42, 0.22);
+    padding: 18px;
+}
+
+.emailEditorHeader {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+}
+
+.emailEditorTitle {
+    margin: 0 0 6px 0;
+    font-size: 22px;
+}
+
+.emailEditorSub {
+    margin: 0;
+    color: rgba(15, 23, 42, 0.72);
+}
+
+.emailEditorBody {
+    display: grid;
+    gap: 10px;
+}
+
+.emailEditorLabel {
+    font-weight: 700;
+}
+
+.emailEditorInput,
+.emailEditorTextarea {
+    width: 100%;
+    border: 1px solid rgba(15, 23, 42, 0.16);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font: inherit;
+}
+
+.emailEditorTextarea {
+    min-height: 320px;
+    resize: vertical;
+}
+
+.emailEditorFooter {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}

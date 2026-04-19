@@ -1,14 +1,4 @@
-<!-- 
-Coding Credits:
-
-For the purposes of acknowledgement, this HTML structure was inspired by the following tutorial:
-https://youtu.be/Z1RJmh_OqeA
--->
-
-<!-- 
-This code allows for reduced redundancies in repaaring code and allows fro each page to work off of a similar framework which is one of the advantages of using PyFlask
--->
-
+{# This template provides the shared shell and navigation used by the app pages. #}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -38,7 +28,7 @@ This code allows for reduced redundancies in repaaring code and allows fro each 
         <div class="tabs">
           <a class="tab {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
           <a class="tab {% if request.endpoint == 'form' %}active{% endif %}" href="{{ url_for('form') }}">Form</a>
-          {% if session.get("role_name") in ("admin", "developer") %}
+          {% if canManageAccounts %}
             <a class="tab {% if request.endpoint == 'stats' %}active{% endif %}" href="{{ url_for('stats') }}">Stats</a>
           {% endif %}
         </div>
@@ -51,8 +41,11 @@ This code allows for reduced redundancies in repaaring code and allows fro each 
           </div>
         {% endif %}
 
-        {% if session.get("role_name") == "admin" %}
+        {% if canManageAccounts %}
           <a class="link" href="{{ url_for('manage_users') }}">Accounts</a>
+        {% endif %}
+
+        {% if canViewBranding %}
           <a class="link" href="{{ url_for('branding') }}">Branding</a>
         {% endif %}
 
@@ -65,6 +58,9 @@ This code allows for reduced redundancies in repaaring code and allows fro each 
   {% endblock %}
 
   <main>
+    {% if usingMockEmailStrategy %}
+      <div class="systemBanner">Microsoft Graph API is not fully configured yet, so live email delivery is unavailable. The form still works and will use the mocked email strategy until the API key and Graph settings are installed.</div>
+    {% endif %}
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="flashStack">

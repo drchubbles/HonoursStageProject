@@ -28,3 +28,11 @@ Once this setup is complete, the user should run the `Run_app.bat` file from the
 
 Then navigate to [here](http://127.0.0.1:5000/) (localhost) to see the system up and working. *Just to be clear, once this application is actually up and running it will be on its own dedicated server.*
 
+## Local summariser
+The project now includes a built-in local summariser that generates a short submission summary inside the Flask application after a form is saved. The summariser only uses the saved question and answer data that already exists in the application and does not scrape the page or send the submission to any external AI service. By default it runs in rule-based mode and stores the generated summary on the submission record so it can be shown on the dashboard and the submission view.
+
+The summariser can be controlled with environment variables:
+- `LOCAL_SUMMARY_MODE=rule_based` keeps the built-in local summariser enabled.
+- `LOCAL_SUMMARY_MODE=disabled` turns summary generation off.
+- `LOCAL_SUMMARY_MODEL_NAME` changes the stored model label.
+- `LOCAL_SUMMARY_MAX_DETAIL_CHARS` controls how much free-text detail is kept in the summary.

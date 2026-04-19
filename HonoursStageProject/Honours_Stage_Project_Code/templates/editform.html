@@ -1,10 +1,4 @@
-<!-- 
-Coding Credits:
-
-For the purposes of acknowledgement, this HTML structure was inspired by the following tutorial:
-https://youtu.be/Z1RJmh_OqeA
--->
-
+{# This template renders the form editor, section tools, and live branching editor. #}
 {% extends "base.html" %}
 {% block title %}Edit Form{% endblock %}
 
@@ -28,6 +22,9 @@ https://youtu.be/Z1RJmh_OqeA
   .dragHandle { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:grab; user-select:none; }
   .dragHandle:active { cursor:grabbing; }
   .sectionRow { background:#fafafa; }
+  .editAddBar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  .editAddBarBottom { margin-top:12px; margin-bottom:0; position:sticky; bottom:12px; z-index:2; padding:10px; background:rgba(250,250,250,0.94); border:1px solid #ddd; border-radius:14px; }
+  .branchRuleRow { display:flex; gap:10px; align-items:center; margin-top:8px; }
 </style>
 
   <form method="POST" id="editForm">
@@ -50,7 +47,7 @@ https://youtu.be/Z1RJmh_OqeA
     <h2 class="sectionTitle">Layout</h2>
     <p class="pageSub">Add sections to group related questions. Drag to reorder. Save creates a new version.</p>
 
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+    <div class="editAddBar">
       <button class="secondaryButton" type="button" onclick="addSection()">+ Add section</button>
       <button class="secondaryButton" type="button" onclick="addNewQuestion()">+ Add question</button>
     </div>
@@ -79,7 +76,7 @@ https://youtu.be/Z1RJmh_OqeA
 
             <div>
               <label>Type</label><br>
-              <select name="existing_type_{{ q.question_version_id }}" onchange="toggleExistingOptions(this)" data-qvid="{{ q.question_version_id }}" {% if not can_edit %}disabled{% endif %}>
+              <select name="existing_type_{{ q.question_version_id }}" onchange="toggleExistingQuestionType(this)" data-qvid="{{ q.question_version_id }}" {% if not can_edit %}disabled{% endif %}>
                 <option value="text" {% if q.response_type == "text" %}selected{% endif %}>text</option>
                 <option value="number" {% if q.response_type == "number" %}selected{% endif %}>number</option>
                 <option value="rating" {% if q.response_type == "rating" %}selected{% endif %}>rating</option>
@@ -122,12 +119,12 @@ https://youtu.be/Z1RJmh_OqeA
 
             <div id="branchWrap_{{ q.question_version_id }}" class="branchWrap" {% if q.response_type != "select" %}style="display:none;"{% endif %}>
               <label>
-                <input type="checkbox" class="branchToggle" data-qvid="{{ q.question_version_id }}" {% if branch_maps and (q.question_version_id in branch_maps) %}checked{% endif %} {% if not can_edit %}disabled{% endif %}>
+                <input type="checkbox" class="branchToggle" data-source-key="{{ q.question_version_id }}" {% if branch_maps and (q.question_version_id in branch_maps) %}checked{% endif %} {% if not can_edit %}disabled{% endif %}>
                 Branching
               </label>
               <input type="hidden" name="branch_state_source" value="{{ q.question_version_id }}">
-              <input type="hidden" name="branch_state_enabled" value="{% if branch_maps and (q.question_version_id in branch_maps) %}1{% else %}0{% endif %}" class="branchState" data-qvid="{{ q.question_version_id }}">
-              <div class="branchPanel" id="branchPanel_{{ q.question_version_id }}" data-branch='{{ (branch_maps.get(q.question_version_id) or {})|tojson }}' style="display:{% if branch_maps and (q.question_version_id in branch_maps) %}block{% else %}none{% endif %};"></div>
+              <input type="hidden" name="branch_state_enabled" value="{% if branch_maps and (q.question_version_id in branch_maps) %}1{% else %}0{% endif %}" class="branchState" data-source-key="{{ q.question_version_id }}">
+              <div class="branchPanel" id="branchPanel_{{ q.question_version_id }}" data-source-key="{{ q.question_version_id }}" data-branch='{{ (branch_maps.get(q.question_version_id) or {})|tojson }}' style="display:{% if branch_maps and (q.question_version_id in branch_maps) %}block{% else %}none{% endif %};"></div>
             </div>
 
           </div>
@@ -187,7 +184,7 @@ https://youtu.be/Z1RJmh_OqeA
 
               <div>
                 <label>Type</label><br>
-                <select name="existing_type_{{ q.question_version_id }}" onchange="toggleExistingOptions(this)" data-qvid="{{ q.question_version_id }}" {% if not can_edit %}disabled{% endif %}>
+                <select name="existing_type_{{ q.question_version_id }}" onchange="toggleExistingQuestionType(this)" data-qvid="{{ q.question_version_id }}" {% if not can_edit %}disabled{% endif %}>
                   <option value="text" {% if q.response_type == "text" %}selected{% endif %}>text</option>
                   <option value="number" {% if q.response_type == "number" %}selected{% endif %}>number</option>
                   <option value="rating" {% if q.response_type == "rating" %}selected{% endif %}>rating</option>
@@ -230,12 +227,12 @@ https://youtu.be/Z1RJmh_OqeA
 
               <div id="branchWrap_{{ q.question_version_id }}" class="branchWrap" {% if q.response_type != "select" %}style="display:none;"{% endif %}>
                 <label>
-                  <input type="checkbox" class="branchToggle" data-qvid="{{ q.question_version_id }}" {% if branch_maps and (q.question_version_id in branch_maps) %}checked{% endif %} {% if not can_edit %}disabled{% endif %}>
+                  <input type="checkbox" class="branchToggle" data-source-key="{{ q.question_version_id }}" {% if branch_maps and (q.question_version_id in branch_maps) %}checked{% endif %} {% if not can_edit %}disabled{% endif %}>
                   Branching
                 </label>
                 <input type="hidden" name="branch_state_source" value="{{ q.question_version_id }}">
-                <input type="hidden" name="branch_state_enabled" value="{% if branch_maps and (q.question_version_id in branch_maps) %}1{% else %}0{% endif %}" class="branchState" data-qvid="{{ q.question_version_id }}">
-                <div class="branchPanel" id="branchPanel_{{ q.question_version_id }}" data-branch='{{ (branch_maps.get(q.question_version_id) or {})|tojson }}' style="display:{% if branch_maps and (q.question_version_id in branch_maps) %}block{% else %}none{% endif %};"></div>
+                <input type="hidden" name="branch_state_enabled" value="{% if branch_maps and (q.question_version_id in branch_maps) %}1{% else %}0{% endif %}" class="branchState" data-source-key="{{ q.question_version_id }}">
+                <div class="branchPanel" id="branchPanel_{{ q.question_version_id }}" data-source-key="{{ q.question_version_id }}" data-branch='{{ (branch_maps.get(q.question_version_id) or {})|tojson }}' style="display:{% if branch_maps and (q.question_version_id in branch_maps) %}block{% else %}none{% endif %};"></div>
               </div>
 
             </div>
@@ -248,6 +245,11 @@ https://youtu.be/Z1RJmh_OqeA
         {% endfor %}
       {% endfor %}
 
+    </div>
+
+    <div class="editAddBar editAddBarBottom">
+      <button class="secondaryButton" type="button" onclick="addSection()">+ Add section</button>
+      <button class="secondaryButton" type="button" onclick="addNewQuestion()">+ Add question</button>
     </div>
 
     <div class="editActions">
@@ -265,42 +267,304 @@ https://youtu.be/Z1RJmh_OqeA
   let newQuestionIndex = 0;
   let newSectionIndex = 0;
 
-  function toggleExistingOptions(sel) {
-    const qvid = sel.dataset.qvid;
-    const block = document.getElementById("existingOptions_" + qvid);
-    if (!block) return;
-    if (sel.value === "select" || sel.value === "multi_select") {
-      block.style.display = "block";
-    } else {
-      block.style.display = "none";
-      const ta = block.querySelector("textarea");
-      if (ta) ta.value = "";
-    }
-
-    const wrap = document.getElementById("branchWrap_" + qvid);
-    if (wrap) {
-      wrap.style.display = (sel.value === "select") ? "block" : "none";
+  // This function safely parses JSON values used by the draft editor.
+  function safeParseJson(value) {
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      return null;
     }
   }
 
-  function toggleNewOptions(sel) {
-    const row = sel.closest(".newQRow");
-    if (!row) return;
-    const block = row.querySelector(".newOptionsBlock");
-    const ta = row.querySelector(".newOptionsBlock textarea");
+  // This function turns option text into a clean list of selectable values.
+  function splitOptionLines(text) {
+    return (text || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
 
-    if (sel.value === "select" || sel.value === "multi_select") {
-      if (block) block.style.display = "block";
-      if (ta) ta.disabled = false;
+  // This function handles find by source key for the current page.
+  function findBySourceKey(selector, sourceKey) {
+    return Array.from(document.querySelectorAll(selector)).find((element) => String(element.dataset.sourceKey || "") === String(sourceKey)) || null;
+  }
+
+  // This function handles get branch panel by source for the current page.
+  function getBranchPanelBySource(sourceKey) {
+    return findBySourceKey(".branchPanel", sourceKey);
+  }
+
+  // This function handles get branch state input for the current page.
+  function getBranchStateInput(sourceKey) {
+    return findBySourceKey(".branchState", sourceKey);
+  }
+
+  // This function handles get branch toggle for the current page.
+  function getBranchToggle(sourceKey) {
+    return findBySourceKey(".branchToggle", sourceKey);
+  }
+
+  // This function handles get question source key for the current page.
+  function getQuestionSourceKey(row) {
+    if (!row) return "";
+    if (row.dataset.kind === "existing") return String(row.dataset.qvid || "");
+    if (row.dataset.kind === "new") return String(row.dataset.newkey || "");
+    return "";
+  }
+
+  // This function handles get question prompt for the current page.
+  function getQuestionPrompt(row) {
+    const sourceKey = getQuestionSourceKey(row);
+    if (!sourceKey) return "";
+    const promptInput = row.dataset.kind === "existing"
+      ? row.querySelector(`input[name="existing_prompt_${sourceKey}"]`)
+      : row.querySelector(`input[name="new_prompt_${sourceKey}"]`);
+    return (promptInput && promptInput.value.trim()) ? promptInput.value.trim() : `Question ${sourceKey}`;
+  }
+
+  // This function handles get question type for the current page.
+  function getQuestionType(row) {
+    const sourceKey = getQuestionSourceKey(row);
+    if (!sourceKey) return "text";
+    const typeSelect = row.dataset.kind === "existing"
+      ? row.querySelector(`select[name="existing_type_${sourceKey}"]`)
+      : row.querySelector(`select[name="new_type_${sourceKey}"]`);
+    return typeSelect ? String(typeSelect.value || "text") : "text";
+  }
+
+  // This function handles get question options for the current page.
+  function getQuestionOptions(row) {
+    const sourceKey = getQuestionSourceKey(row);
+    if (!sourceKey) return [];
+    const typeValue = getQuestionType(row);
+    if (typeValue !== "select" && typeValue !== "multi_select") return [];
+    const optionsArea = row.dataset.kind === "existing"
+      ? row.querySelector(`textarea[name="existing_options_${sourceKey}"]`)
+      : row.querySelector(`textarea[name="new_options_${sourceKey}"]`);
+    return splitOptionLines(optionsArea ? optionsArea.value : "");
+  }
+
+  // This function gathers the current unsaved question draft state from the page.
+  function collectDraftQuestions() {
+    return Array.from(document.querySelectorAll('.qrow[data-kind="existing"], .qrow[data-kind="new"]')).map((row) => ({
+      id: getQuestionSourceKey(row),
+      label: getQuestionPrompt(row),
+      type: getQuestionType(row),
+      options: getQuestionOptions(row)
+    })).filter((question) => question.id);
+  }
+
+  // This function refreshes a select element with the latest available options.
+  function fillSelectOptions(selectElement, placeholderText, options, selectedValue) {
+    if (!selectElement) return;
+    selectElement.innerHTML = "";
+    selectElement.appendChild(new Option(placeholderText, ""));
+    options.forEach((option) => {
+      selectElement.appendChild(new Option(option.label, option.value));
+    });
+    if (selectedValue && options.some((option) => String(option.value) === String(selectedValue))) {
+      selectElement.value = String(selectedValue);
     } else {
-      if (block) block.style.display = "none";
-      if (ta) {
-        ta.disabled = true;
-        ta.value = "";
+      selectElement.value = "";
+    }
+  }
+
+  // This function creates one editable branching rule row in the draft editor.
+  function buildBranchRuleRow(sourceKey, selectedOption = "", selectedTarget = "") {
+    const row = document.createElement("div");
+    row.className = "branchRow branchRuleRow";
+
+    const sourceInput = document.createElement("input");
+    sourceInput.type = "hidden";
+    sourceInput.name = "branch_map_source";
+    sourceInput.value = String(sourceKey);
+
+    const optionSelect = document.createElement("select");
+    optionSelect.name = "branch_map_option";
+    optionSelect.className = "branchOptionSelect";
+
+    const targetSelect = document.createElement("select");
+    targetSelect.name = "branch_map_target";
+    targetSelect.className = "branchTargetSelect";
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.textContent = "Remove";
+    removeButton.onclick = () => row.remove();
+
+    row.appendChild(sourceInput);
+    row.appendChild(optionSelect);
+    row.appendChild(targetSelect);
+    row.appendChild(removeButton);
+
+    refreshBranchRuleRow(row, sourceKey, selectedOption, selectedTarget);
+    return row;
+  }
+
+  // This function refreshes the option and target choices for one branching rule.
+  function refreshBranchRuleRow(row, sourceKey, selectedOption = null, selectedTarget = null) {
+    if (!row) return;
+    const questions = collectDraftQuestions();
+    const sourceQuestion = questions.find((question) => String(question.id) === String(sourceKey));
+    const optionSelect = row.querySelector('.branchOptionSelect');
+    const targetSelect = row.querySelector('.branchTargetSelect');
+    const optionValue = selectedOption !== null ? selectedOption : (optionSelect ? optionSelect.value : "");
+    const targetValue = selectedTarget !== null ? selectedTarget : (targetSelect ? targetSelect.value : "");
+
+    const sourceOptions = (sourceQuestion && Array.isArray(sourceQuestion.options))
+      ? sourceQuestion.options.map((optionLabel) => ({ value: optionLabel, label: optionLabel }))
+      : [];
+    fillSelectOptions(optionSelect, "Select option", sourceOptions, optionValue);
+
+    const targetOptions = questions
+      .filter((question) => String(question.id) !== String(sourceKey))
+      .map((question) => ({ value: question.id, label: question.label }));
+    fillSelectOptions(targetSelect, "Show question", targetOptions, targetValue);
+  }
+
+  // This function loads the saved branching state into one branch editor panel.
+  function initBranchPanel(panel) {
+    if (!panel || panel.dataset.branchReady === "1") return;
+    const sourceKey = String(panel.dataset.sourceKey || "");
+    const state = safeParseJson(panel.dataset.branch || "{}") || {};
+
+    panel.innerHTML = "";
+
+    const rowsContainer = document.createElement("div");
+    rowsContainer.className = "branchRows";
+    panel.appendChild(rowsContainer);
+
+    Object.keys(state).forEach((optionLabel) => {
+      rowsContainer.appendChild(buildBranchRuleRow(sourceKey, optionLabel, String(state[optionLabel] || "")));
+    });
+
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.textContent = "Add path";
+    addButton.onclick = () => {
+      rowsContainer.appendChild(buildBranchRuleRow(sourceKey));
+    };
+    panel.appendChild(addButton);
+
+    panel.dataset.branchReady = "1";
+  }
+
+  // This function refreshes every branching panel after draft changes.
+  function refreshAllBranchPanels() {
+    document.querySelectorAll(".branchPanel").forEach((panel) => {
+      if (panel.dataset.branchReady !== "1") {
+        initBranchPanel(panel);
+      }
+      const sourceKey = String(panel.dataset.sourceKey || "");
+      panel.querySelectorAll(".branchRuleRow").forEach((row) => {
+        refreshBranchRuleRow(row, sourceKey);
+      });
+    });
+  }
+
+  // This function shows or hides the branching editor for a question.
+  function setBranchingVisible(sourceKey, enabled) {
+    const panel = getBranchPanelBySource(sourceKey);
+    const stateInput = getBranchStateInput(sourceKey);
+    const toggle = getBranchToggle(sourceKey);
+
+    if (panel && enabled) {
+      initBranchPanel(panel);
+      panel.style.display = "block";
+    }
+    if (panel && !enabled) {
+      panel.style.display = "none";
+    }
+    if (stateInput) {
+      stateInput.value = enabled ? "1" : "0";
+    }
+    if (toggle && toggle.checked !== enabled) {
+      toggle.checked = enabled;
+    }
+    if (enabled) {
+      refreshAllBranchPanels();
+    }
+  }
+
+  // This function updates the editor view for an existing question type change.
+  function toggleExistingQuestionType(selectElement) {
+    const questionId = String(selectElement.dataset.qvid || "");
+    const optionsBlock = document.getElementById("existingOptions_" + questionId);
+    const optionsArea = optionsBlock ? optionsBlock.querySelector("textarea") : null;
+    const supportsOptions = selectElement.value === "select" || selectElement.value === "multi_select";
+    const supportsBranching = selectElement.value === "select";
+
+    if (optionsBlock) {
+      optionsBlock.style.display = supportsOptions ? "block" : "none";
+    }
+    if (!supportsOptions && optionsArea) {
+      optionsArea.value = "";
+    }
+
+    const branchWrap = document.getElementById("branchWrap_" + questionId);
+    if (branchWrap) {
+      branchWrap.style.display = supportsBranching ? "block" : "none";
+    }
+    if (!supportsBranching) {
+      setBranchingVisible(questionId, false);
+    }
+    if (supportsBranching) {
+      const toggle = getBranchToggle(questionId);
+      if (toggle && toggle.checked) {
+        setBranchingVisible(questionId, true);
       }
     }
+
+    refreshAllBranchPanels();
   }
 
+  // This function updates the editor view for a new question type change.
+  function toggleNewQuestionType(selectElement) {
+    const row = selectElement.closest(".newQRow");
+    if (!row) return;
+    const questionKey = String(row.dataset.newkey || "");
+    const optionsBlock = row.querySelector(".newOptionsBlock");
+    const optionsArea = optionsBlock ? optionsBlock.querySelector("textarea") : null;
+    const supportsOptions = selectElement.value === "select" || selectElement.value === "multi_select";
+    const supportsBranching = selectElement.value === "select";
+
+    if (optionsBlock) {
+      optionsBlock.style.display = supportsOptions ? "block" : "none";
+    }
+    if (optionsArea) {
+      optionsArea.disabled = !supportsOptions;
+      if (!supportsOptions) {
+        optionsArea.value = "";
+      }
+    }
+
+    const branchWrap = document.getElementById("branchWrap_new_" + questionKey);
+    if (branchWrap) {
+      branchWrap.style.display = supportsBranching ? "block" : "none";
+    }
+    if (!supportsBranching) {
+      setBranchingVisible(questionKey, false);
+    }
+    if (supportsBranching) {
+      const toggle = getBranchToggle(questionKey);
+      if (toggle && toggle.checked) {
+        setBranchingVisible(questionKey, true);
+      }
+    }
+
+    refreshAllBranchPanels();
+  }
+
+  // This function removes a draft question row from the edit form.
+  function removeDraftQuestion(button) {
+    const row = button.closest(".newQRow");
+    if (!row) return;
+    row.remove();
+    refreshQuestionNumbers();
+    refreshAllBranchPanels();
+  }
+
+  // This function adds a new draft section block to the edit form.
   function addSection() {
     const container = document.getElementById("questionsList");
     if (!container) return;
@@ -335,9 +599,12 @@ https://youtu.be/Z1RJmh_OqeA
     `;
 
     container.appendChild(row);
+    bindDraftEditorEvents(row);
     refreshQuestionNumbers();
+    row.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
+  // This function adds a new draft question block to the edit form.
   function addNewQuestion() {
     const container = document.getElementById("questionsList");
     if (!container) return;
@@ -374,7 +641,7 @@ https://youtu.be/Z1RJmh_OqeA
 
       <div>
         <label>Type</label><br>
-        <select name="new_type_${key}" onchange="toggleNewOptions(this)">
+        <select name="new_type_${key}" onchange="toggleNewQuestionType(this)">
           <option value="text">text</option>
           <option value="number">number</option>
           <option value="rating">rating</option>
@@ -408,160 +675,94 @@ https://youtu.be/Z1RJmh_OqeA
         <textarea name="new_options_${key}" rows="5" disabled></textarea>
       </div>
 
+      <div id="branchWrap_new_${key}" class="branchWrap" style="display:none;">
+        <label>
+          <input type="checkbox" class="branchToggle" data-source-key="${key}">
+          Branching
+        </label>
+        <input type="hidden" name="branch_state_source" value="${key}">
+        <input type="hidden" name="branch_state_enabled" value="0" class="branchState" data-source-key="${key}">
+        <div class="branchPanel" id="branchPanel_new_${key}" data-source-key="${key}" data-branch='{}' style="display:none;"></div>
+      </div>
+
       <div style="margin-top:8px;">
-        <button type="button" onclick="this.closest('.newQRow').remove(); refreshQuestionNumbers();">Remove</button>
+        <button type="button" onclick="removeDraftQuestion(this)">Remove</button>
       </div>
     `;
 
     container.appendChild(row);
+    bindDraftEditorEvents(row);
     refreshQuestionNumbers();
+    refreshAllBranchPanels();
+    row.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
+  // This function renumbers the visible draft questions in display order.
   function refreshQuestionNumbers() {
-    const list = document.getElementById("questionsList");
-    if (!list) return;
-    const rows = Array.from(list.querySelectorAll(".qrow"));
-    let i = 1;
+    const rows = Array.from(document.querySelectorAll("#questionsList .qrow"));
+    let questionNumber = 1;
     rows.forEach((row) => {
       if (row.dataset.kind !== "existing" && row.dataset.kind !== "new") return;
-      const numEl = row.querySelector(".qNum");
-      if (numEl) numEl.textContent = `Q${i}`;
-      i += 1;
-    });
-  }
-
-  const questionsList = document.getElementById("questionsList");
-  if (questionsList) {
-    new Sortable(questionsList, {
-      animation: 150,
-      handle: ".dragHandle",
-      ghostClass: "sortableGhost",
-      onSort: function () {
-        refreshQuestionNumbers();
+      const numberBadge = row.querySelector(".qNum");
+      if (numberBadge) {
+        numberBadge.textContent = `Q${questionNumber}`;
       }
+      questionNumber += 1;
     });
   }
 
-  refreshQuestionNumbers();
-</script>
-
-<script>
-  function safeParseJson(s) {
-    try {
-      return JSON.parse(s);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function ensureHidden(name, value) {
-    const f = document.getElementById("editForm");
-    if (!f) return;
-    const i = document.createElement("input");
-    i.type = "hidden";
-    i.name = name;
-    i.value = value;
-    f.appendChild(i);
-  }
-
-  function ensureBranchHiddenFields() {
-    document.querySelectorAll(".branchState").forEach((h) => {
-      ensureHidden("branch_state_source", h.dataset.qvid || "");
-      ensureHidden("branch_state_enabled", h.value || "0");
-    });
-  }
-
-  function buildBranchRow(sourceQvid, optLabel, targetQvid, questions) {
-    const row = document.createElement("div");
-    row.className = "branchRow";
-
-    const selOpt = document.createElement("select");
-    selOpt.name = "branch_map_option";
-
-    const selTgt = document.createElement("select");
-    selTgt.name = "branch_map_target";
-
-    selOpt.appendChild(new Option("Select option", ""));
-    const q = questions.find(x => String(x.id) === String(sourceQvid));
-    const opts = (q && q.options) ? q.options : [];
-    opts.forEach(o => selOpt.appendChild(new Option(o, o)));
-
-    selTgt.appendChild(new Option("Show question", ""));
-    questions.forEach(q2 => selTgt.appendChild(new Option(q2.label, q2.id)));
-
-    if (optLabel) selOpt.value = optLabel;
-    if (targetQvid) selTgt.value = String(targetQvid);
-
-    const del = document.createElement("button");
-    del.type = "button";
-    del.textContent = "Remove";
-    del.onclick = () => row.remove();
-
-    row.appendChild(selOpt);
-    row.appendChild(selTgt);
-    row.appendChild(del);
-
-    ensureHidden("branch_map_source", String(sourceQvid));
-    return row;
-  }
-
-  function initBranchingPanels() {
-    const panels = document.querySelectorAll(".branchPanel");
-    panels.forEach(panel => {
-      const qvid = panel.id.replace("branchPanel_", "");
-      const state = safeParseJson(panel.dataset.branch || "{}") || {};
-      const questions = Array.from(document.querySelectorAll('.qrow[data-kind="existing"]'))
-        .map(r => {
-          const id = r.dataset.qvid;
-          const prompt = r.querySelector(`input[name="existing_prompt_${id}"]`)?.value || `Q${id}`;
-          const typeSel = r.querySelector(`select[name="existing_type_${id}"]`);
-          const type = typeSel ? typeSel.value : "text";
-          const optionsTa = r.querySelector(`textarea[name="existing_options_${id}"]`);
-          const opts = (type === "select" && optionsTa) ? optionsTa.value.split("\n").map(x => x.trim()).filter(Boolean) : [];
-          return { id: id, label: prompt, type: type, options: opts };
-        });
-
-      panel.innerHTML = "";
-
-      const addBtn = document.createElement("button");
-      addBtn.type = "button";
-      addBtn.textContent = "Add path";
-      addBtn.onclick = () => {
-        panel.appendChild(buildBranchRow(qvid, "", "", questions));
-      };
-
-      panel.appendChild(addBtn);
-
-      Object.keys(state || {}).forEach(optLabel => {
-        const tgt = state[optLabel];
-        panel.appendChild(buildBranchRow(qvid, optLabel, tgt, questions));
+  // This function wires the live draft editor events after the page loads.
+  function bindDraftEditorEvents(scope = document) {
+    scope.querySelectorAll('.branchToggle').forEach((toggle) => {
+      if (toggle.dataset.boundToggle === "1") return;
+      toggle.dataset.boundToggle = "1";
+      toggle.addEventListener("change", () => {
+        setBranchingVisible(String(toggle.dataset.sourceKey || ""), toggle.checked);
       });
     });
-  }
 
-  function bindBranchToggles() {
-    document.querySelectorAll(".branchToggle").forEach(t => {
-      t.addEventListener("change", () => {
-        const qvid = t.dataset.qvid;
-        const panel = document.getElementById("branchPanel_" + qvid);
-        const state = document.querySelector(`.branchState[data-qvid="${qvid}"]`);
-        if (panel) panel.style.display = t.checked ? "block" : "none";
-        if (state) state.value = t.checked ? "1" : "0";
+    scope.querySelectorAll('input[name^="existing_prompt_"], input[name^="new_prompt_"], textarea[name^="existing_options_"], textarea[name^="new_options_"]').forEach((field) => {
+      if (field.dataset.boundRefresh === "1") return;
+      field.dataset.boundRefresh = "1";
+      field.addEventListener("input", () => {
+        refreshQuestionNumbers();
+        refreshAllBranchPanels();
       });
     });
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    initBranchingPanels();
-    bindBranchToggles();
-
-    const f = document.getElementById("editForm");
-    if (f) {
-      f.addEventListener("submit", () => {
-        ensureBranchHiddenFields();
+    const questionsList = document.getElementById("questionsList");
+    if (questionsList) {
+      new Sortable(questionsList, {
+        animation: 150,
+        handle: ".dragHandle",
+        ghostClass: "sortableGhost",
+        onSort: function () {
+          refreshQuestionNumbers();
+          refreshAllBranchPanels();
+        }
       });
     }
-  });
-</script>
+
+    bindDraftEditorEvents(document);
+
+    document.querySelectorAll('select[name^="existing_type_"]').forEach((selectElement) => {
+      toggleExistingQuestionType(selectElement);
+    });
+
+    document.querySelectorAll('.newQRow select[name^="new_type_"]').forEach((selectElement) => {
+      toggleNewQuestionType(selectElement);
+    });
+
+    document.querySelectorAll('.branchToggle').forEach((toggle) => {
+      if (toggle.checked) {
+        setBranchingVisible(String(toggle.dataset.sourceKey || ""), true);
+      }
+    });
+
+    refreshQuestionNumbers();
+    refreshAllBranchPanels();
+  });</script>
 
 {% endblock %}
