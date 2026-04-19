@@ -16,6 +16,9 @@
   ],
   "visibleSummaryCardKeys": [
     "totalSubmissions",
+    "submittedToday",
+    "submittedThisWeek",
+    "submittedThisMonth",
     "uniqueStaffMembers",
     "mostCommonIssue",
     "mostSubmittedAbout",

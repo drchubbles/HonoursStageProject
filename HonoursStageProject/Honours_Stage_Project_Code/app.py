@@ -186,6 +186,9 @@ DEFAULT_VISIBLE_STATS_SECTIONS = [
 
 DEFAULT_VISIBLE_SUMMARY_CARD_KEYS = [
     "totalSubmissions",
+    "submittedToday",
+    "submittedThisWeek",
+    "submittedThisMonth",
     "uniqueStaffMembers",
     "mostCommonIssue",
     "mostSubmittedAbout",
@@ -2527,6 +2530,9 @@ def stats():
     ]
     summaryCardOptions = [
         {"key": "totalSubmissions", "label": "Total submissions"},
+        {"key": "submittedToday", "label": "Submitted today"},
+        {"key": "submittedThisWeek", "label": "Submitted this week"},
+        {"key": "submittedThisMonth", "label": "Submitted this month"},
         {"key": "uniqueStaffMembers", "label": "Unique staff members"},
         {"key": "mostCommonIssue", "label": "Most common issue"},
         {"key": "mostSubmittedAbout", "label": "Most submitted about"},
@@ -2875,6 +2881,24 @@ def stats():
     knownTeamCounter = Counter({name: count for name, count in teamCounter.items() if normalizeStatsKey(name) != "unknown"})
     knownSupervisorCounter = Counter({name: count for name, count in supervisorCounter.items() if normalizeStatsKey(name) != "unknown"})
 
+    currentDateTime = datetime.now()
+    startOfToday = currentDateTime.replace(hour=0, minute=0, second=0, microsecond=0)
+    startOfWeek = startOfToday - timedelta(days=startOfToday.weekday())
+    startOfMonth = startOfToday.replace(day=1)
+    submittedTodayCount = 0
+    submittedThisWeekCount = 0
+    submittedThisMonthCount = 0
+    for submission in submissions:
+        submittedAt = submission.submitted_at
+        if not submittedAt or submittedAt > currentDateTime:
+            continue
+        if submittedAt >= startOfToday:
+            submittedTodayCount += 1
+        if submittedAt >= startOfWeek:
+            submittedThisWeekCount += 1
+        if submittedAt >= startOfMonth:
+            submittedThisMonthCount += 1
+
     topStaff = knownStaffCounter.most_common(10)
     topIssues = issueCounter.most_common(10)
     topTeams = knownTeamCounter.most_common(10) or teamCounter.most_common(10)
@@ -2956,6 +2980,9 @@ def stats():
 
     summaryCardDefinitions = [
         {"key": "totalSubmissions", "label": "Total submissions", "value": len(submissions)},
+        {"key": "submittedToday", "label": "Submitted today", "value": submittedTodayCount},
+        {"key": "submittedThisWeek", "label": "Submitted this week", "value": submittedThisWeekCount},
+        {"key": "submittedThisMonth", "label": "Submitted this month", "value": submittedThisMonthCount},
         {"key": "uniqueStaffMembers", "label": "Unique staff members", "value": len(knownStaffCounter)},
         {"key": "mostCommonIssue", "label": "Most common issue", "value": topIssues[0][0] if topIssues else "No issue data yet"},
         {"key": "mostSubmittedAbout", "label": "Most submitted about", "value": topStaff[0][0] if topStaff else "No data yet"},
