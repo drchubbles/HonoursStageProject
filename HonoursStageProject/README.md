@@ -14,9 +14,9 @@ Areas that have been completed are noted down with an **x**, areas that still ne
 | x | **Core Forms Functionality Development** | Building the database, forms UI, form-question integration, edit functionality, feedback system, and validating correct form behavior.| Milestone 4 – Forms Section|
 | x | **Authentication & Admin Controls**| Implementing admin login, role-based permissions, and restricting sensitive actions (e.g., editing questions) to administrators.| Milestone 5 – Admin Profiles|
 | x | **Dashboard & Data Visualization**| Developing dashboards, visual data displays, charts, and systems to highlight recurring issues for staff.| Milestone 6 – Dashboard|
-|  | **Enhancement & Polish (Optional)**| Adding “nice-to-have” features, usability improvements, and refinements if time allows.| Post-Milestone / Stretch Goals|
+| x | **Enhancement & Polish (Optional)**| Adding “nice-to-have” features, usability improvements, and refinements if time allows.| Post-Milestone / Stretch Goals|
 
-This code is done using PyFlare. To ensure it works properly, please clone the repository and then use the provided SQL scripts to create the database. Then ensure you have the packets necissary installed to run the code by running:
+This code is done using PyFlask. To ensure it works properly, please clone the repository and then use the provided SQL scripts to create the database. Then ensure you have the packets necissary installed to run the code by running:
 
 To run the product successfully, a database management system is required. In this project, **MySQL Workbench** is used to manage the database and execute the SQL setup scripts. These scripts must be run in the correct order so that the database structure, user accounts, roles, and initial form data are created properly.
 
