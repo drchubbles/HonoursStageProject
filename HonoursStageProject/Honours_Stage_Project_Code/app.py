@@ -1,6 +1,55 @@
+#In the interest of transparency, I am putting the sources where I got teh coding guidance from.
+# No code unless explicitly stated is copied off of the internet but resources were used for structuring the code.
+# teh  following links are what I used for developing this code and what inspired teh structure
+# teh  first video that was watched on pyflask that inspired the project is: https://youtu.be/Z1RJmh_OqeA
+# this project is what layed teh ground work for code structure and how pyflask could be utalised.
 
+# Additional  implementation inspiration also came from practical YouTube walkthroughs adn conference talks viewed during development for guidance:
+# Microsoft Graph adn Mail API walkthrough: https://www.youtube.com/watch?v=L-gm25wusIQ
+# Microsoft  Graph API introduction walkthrough: https://www.youtube.com/watch?v=TjqrXW5N8HM
+# Corey  Schafer Flask tutorila Playlist: https://www.youtube.com/playlist?list=PL-osiE80TeTs4UjLw5MM6OjgkjFeUxCYH
+# FlaskCon / Pallets ecosystem talk (general Flask ecosystem awareness): https://www.youtube.com/watch?v=TYeMf0bCbr8
 
 # This section imports the libraries and shared services used across the app.
+# Teh  structure and patterns used in this file were informed by teh official documentation for teh main frameworks adn libraries used here:
+# Flask Quickstart (application setup, routing, requests, responses, sessions, and URL building): https://flask.palletsprojects.com/en/stable/quickstart/
+# Flask View Decorators pattern (used as inspiration fro login/admin/developer/editor rote protection wrappers): https://flask.palletsprojects.com/en/stable/patterns/viewdecorators/
+# Flask  Uploading Files pattern (used as inspiration fro secure file upload handling): https://flask.palletsprojects.com/en/stable/patterns/fileuploads/
+# Flask  Message Flashing pattern (used as inspiration for success, warning, adn error feedback messages): https://flask.palletsprojects.com/en/stable/patterns/flashing/
+# flask templates guidance (used sa inspiration For rendering templates and passing context into pages): https://flask.palletsprojects.com/en/stable/tutorial/templates/
+# Flask-SQLAlchemy  Quickstart (used as inspiration fro application/database integration): https://flask-sqlalchemy.readthedocs.io/en/stable/quickstart/
+# SQLAlchemy ORM Basic Relationship Patterns (used as inspiration for model relationships such as Role, Uers, QuestionVersion, and QuestionVersionOption): https://docs.sqlalchemy.org/en/20/orm/basic_relationships.html
+# Werkzeug  security utilities (used As inspiration for password hashing/checking adn Secire filename handling): https://werkzeug.palletsprojects.com/en/stable/utils/#module-werkzeug.security
+# Microsoft  graph auth concepts and sendMail documentation were asol used Where teh email-delivery integration was deisgned:
+# https://learn.microsoft.com/en-us/graph/auth/auth-concepts
+# https://learn.microsoft.com/en-us/graph/api/user-sendmail?view=graph-rest-1.0
+
+# this  Section imports teh libraries and shared services used across the app
+#In the interest of transparency, I am putting the sources where I got teh coding guidance from.
+# No code unless explicitly stated is copied off of the internet but resources were used for structuring the code.
+# teh  following links are what I used for developing this code and what inspired teh structure
+# teh  first video that was watched on pyflask that inspired the project is: https://youtu.be/Z1RJmh_OqeA
+# this project is what layed teh ground work for code structure and how pyflask could be utalised.
+
+# Additional  implementation inspiration also came from practical YouTube walkthroughs adn conference talks viewed during development for guidance:
+# Microsoft Graph and Mail API walkthrough: https://www.youtube.com/watch?v=L-gm25wusIQ
+# Microsoft  Graph API introduction walkthrough: https://www.youtube.com/watch?v=TjqrXW5N8HM
+# Corey  Schafer Flask tutorila Playlist: https://www.youtube.com/playlist?list=PL-osiE80TeTs4UjLw5MM6OjgkjFeUxCYH
+# FlaskCon / Pallets ecosystem talk (general Flask ecosystem awareness): https://www.youtube.com/watch?v=TYeMf0bCbr8
+
+# this section imports the libraries and shared services used across the app.
+# Teh  structure and patterns used in this file were informed by teh official documentation for teh main frameworks adn libraries used here:
+# Flask Quickstart (application setup, routing, requests, responses, sessions, and URL building): https://flask.palletsprojects.com/en/stable/quickstart/
+# Flask View Decorators pattern (used as inspiration fro login/admin/developer/editor rote protection wrappers): https://flask.palletsprojects.com/en/stable/patterns/viewdecorators/
+# Flask  Uploading Files pattern (used as inspiration fro secure file upload handling): https://flask.palletsprojects.com/en/stable/patterns/fileuploads/
+# Flask  Message Flashing pattern (used as inspiration for success, warning, adn error feedback messages): https://flask.palletsprojects.com/en/stable/patterns/flashing/
+# flask templates guidance (used sa inspiration For rendering templates and passing context into pages): https://flask.palletsprojects.com/en/stable/tutorial/templates/
+# Flask-SQLAlchemy  Quickstart (used as inspiration fro application/database integration): https://flask-sqlalchemy.readthedocs.io/en/stable/quickstart/
+# SQLAlchemy ORM Basic Relationship Patterns (used as inspiration for model relationships such as Role, Uers, QuestionVersion, and QuestionVersionOption): https://docs.sqlalchemy.org/en/20/orm/basic_relationships.html
+# Werkzeug  security utilities (used As inspiration for password hashing/checking adn Secire filename handling): https://werkzeug.palletsprojects.com/en/stable/utils/#module-werkzeug.security
+# Microsoft  graph auth concepts and sendMail documentation were asol used Where teh email-delivery integration was deisgned:
+# https://learn.microsoft.com/en-us/graph/auth/auth-concepts
+# https://learn.microsoft.com/en-us/graph/api/user-sendmail?view=graph-rest-1.0
 from __future__ import annotations
 import os
 import uuid
@@ -22,11 +71,13 @@ from werkzeug.utils import secure_filename
 from config import Config
 
 
-# This section creates the Flask app and shared defaults used across requests.
+# this  Section creates teh Flask app and shared defaults used across requests
+# Do not change this If unsure what it will do!!! it WILL destroy teh code
 app = Flask(__name__)
 
 
-# This section stores reusable security questions and reporting defaults used across the form system.
+# This section stortes the reusable security questions and reporting defaults used across the form system, more can be added here if you want to add more.
+# Please  note that this does NOT make teh questions insecure as teh answers are stored in a secure database
 securityQuestions = [
     {"key": "firstSchool", "text": "What was the name of your first school?"},
     {"key": "childhoodStreet", "text": "What was the name of the street you grew up on?"},
@@ -40,29 +91,28 @@ securityQuestions = [
     {"key": "favouriteFood", "text": "What was your favourite food as a child?"},
 ]
 
-
-# This function normalizes role names so permission checks stay consistent.
-def normalizeRoleName(value):
+# this  Function normalizes role names so permission checks stay consistent, Added due to permissions messing ip previously so was necisarry to ensure proper security so opeopel could only acces what tehy were usppsoed to
+def normaliseRoleName(value):
     return (str(value or "").strip().lower())
 
-
-# This function trims and tidies credential text before it is saved or compared.
-def normalizeCredentialText(value):
+# This function trims adn tidies credential text before it si saved or compared. 
+# this  makes signing in easier for teh user by ignoring accidental extra spaces
+def normaliseCredentialText(value):
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
-# This function standardizes security answers before they are checked.
-def normalizeSecurityAnswer(value):
-    return normalizeCredentialText(value).lower()
+# This function standardises security answers before they are checked so that if a user capitalises their answer it doesnt matter.
+def normaliseSecurityAnswer(value):
+    return normaliseCredentialText(value).lower()
 
 
-# This function creates a one-time code for account setup and reset workflows.
+# this  Function creates a one time code fro account setup and reset workflows. this allows for secure creation and security of accounts without emailing sign up links
 def buildOneTimeCode():
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     return "-".join("".join(secrets.choice(alphabet) for _ in range(5)) for _ in range(4))
 
 
-# This function builds a placeholder password hash for accounts that still need setup.
+# this  Function builds a placeholder password hash for accounts that still need setup
 def createPlaceholderPasswordHash():
     return generate_password_hash(secrets.token_urlsafe(32))
 
@@ -77,7 +127,7 @@ def passwordMeetsRules(passwordText):
     return len(passwordText or "") >= 8
 
 
-# This function issues a fresh setup or reset token for a user account.
+# this  Function issues a fresh setup or reset token for a user account
 def issueUserToken(userId, tokenType, minutesValid, createdByAdminId=None):
     rawCode = buildOneTimeCode()
     expiresAt = datetime.utcnow() + timedelta(minutes=int(minutesValid))
@@ -127,7 +177,7 @@ def clearPendingResetSession():
         session.pop(key, None)
 
 
-# This function makes sure the branding storage files and folders exist before use.
+# this  Function makes sure teh branding storage files and folders exist before use
 def ensureBrandingState():
     uploadLogoFolder = app.config.get("UPLOAD_LOGO_FOLDER")
     if not uploadLogoFolder:
@@ -147,7 +197,7 @@ def ensureBrandingState():
     return brandingStatePath
 
 
-# This function reads the saved branding state from disk.
+# this  Function reads the saved branding state from disk
 def getBrandingState():
     brandingStatePath = ensureBrandingState()
     with open(brandingStatePath, "r", encoding="utf-8") as f:
@@ -161,7 +211,7 @@ def setBrandingState(logoFilename: str | None):
         f.write(json.dumps({"logoFilename": logoFilename}, indent=2))
 
 
-# This function checks whether an uploaded logo file type is allowed.
+# this  Function checks whether an uploaded logo file type is allowed
 def allowedLogo(filename: str) -> bool:
     if "." not in filename:
         return False
@@ -204,7 +254,7 @@ CUSTOM_MONITOR_MEASURE_OPTIONS = [
 ]
 
 
-# This function makes sure the stats configuration file exists and is valid.
+# this  Function makes sure the stats configuration file exists and is valid
 def ensureStatsState():
     statsStatePath = app.config.get("STATS_STATE_PATH")
     if not statsStatePath:
@@ -224,7 +274,7 @@ def ensureStatsState():
     return statsStatePath
 
 
-# This function reads the saved stats configuration from disk.
+# this  Function reads teh saved stats configuration from disk
 def getStatsState():
     statsStatePath = ensureStatsState()
     with open(statsStatePath, "r", encoding="utf-8") as f:
@@ -251,7 +301,7 @@ def getStatsState():
     return state
 
 
-# This function writes the saved stats configuration back to disk.
+# this function writes the saved stats configuration back to disk.
 def setStatsState(trackedQuestionKeys, trackedQuestionVersionIds=None, visibleSectionKeys=None, visibleSummaryCardKeys=None, customMonitorItems=None):
     statsStatePath = ensureStatsState()
     cleanIds = []
@@ -304,14 +354,14 @@ def statsRequired(view_func):
     return wrapper
 
 
-# This function tidies stats text values before they are compared or displayed.
-def normalizeStatsText(value):
+# this  Function tidies stats text values before they are compared or displayed
+def normaliseStatsText(value):
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
-# This function converts stats text into a normalized comparison key.
-def normalizeStatsKey(value):
-    return normalizeStatsText(value).lower()
+# This function converts stats text into a normalised comparison key.
+def normaliseStatsKey(value):
+    return normaliseStatsText(value).lower()
 
 
 # This function gets the display label for a custom monitor measure key.
@@ -322,19 +372,19 @@ def getCustomMonitorMeasureLabel(measureType):
     return "Answered submissions"
 
 
-# This function cleans saved custom monitor items before the stats page uses them.
+# this  Function cleans saved custom monitor items before teh stats page uses them
 def sanitizeCustomMonitorItems(rawItems, questionMap):
     allowedMeasureTypes = {item["key"] for item in CUSTOM_MONITOR_MEASURE_OPTIONS}
     cleanItems = []
     seenIds = set()
     for rawItem in rawItems or []:
-        monitorId = normalizeStatsText((rawItem or {}).get("monitorId")) or uuid.uuid4().hex[:12]
+        monitorId = normaliseStatsText((rawItem or {}).get("monitorId")) or uuid.uuid4().hex[:12]
         if monitorId in seenIds:
             monitorId = uuid.uuid4().hex[:12]
         seenIds.add(monitorId)
-        title = normalizeStatsText((rawItem or {}).get("title"))
-        questionKey = normalizeStatsKey((rawItem or {}).get("questionKey"))
-        measureType = normalizeStatsText((rawItem or {}).get("measureType"))
+        title = normaliseStatsText((rawItem or {}).get("title"))
+        questionKey = normaliseStatsKey((rawItem or {}).get("questionKey"))
+        measureType = normaliseStatsText((rawItem or {}).get("measureType"))
         if questionKey not in questionMap:
             continue
         if measureType not in allowedMeasureTypes:
@@ -350,20 +400,20 @@ def sanitizeCustomMonitorItems(rawItems, questionMap):
     return cleanItems
 
 
-# This function calculates the value shown by a custom monitored stat card.
+# this  Function calculates the value shown by a custom monitored stat card
 def buildCustomMonitorValue(monitorItem, answerCounterByPromptKey, answeredSubmissionCounterByPromptKey):
-    questionKey = normalizeStatsKey(monitorItem.get("questionKey"))
-    measureType = normalizeStatsText(monitorItem.get("measureType"))
+    questionKey = normaliseStatsKey(monitorItem.get("questionKey"))
+    measureType = normaliseStatsText(monitorItem.get("measureType"))
     answerCounter = answerCounterByPromptKey.get(questionKey, Counter())
     answeredCount = int(answeredSubmissionCounterByPromptKey.get(questionKey, 0))
 
     if measureType == "answeredCount":
         return str(answeredCount)
     if measureType == "yesCount":
-        yesCount = sum(count for answer, count in answerCounter.items() if normalizeStatsKey(answer) in {"yes", "true", "correct"})
+        yesCount = sum(count for answer, count in answerCounter.items() if normaliseStatsKey(answer) in {"yes", "true", "correct"})
         return str(yesCount)
     if measureType == "noCount":
-        noCount = sum(count for answer, count in answerCounter.items() if normalizeStatsKey(answer) in {"no", "false", "incorrect"})
+        noCount = sum(count for answer, count in answerCounter.items() if normaliseStatsKey(answer) in {"no", "false", "incorrect"})
         return str(noCount)
     if measureType == "uniqueAnswers":
         return str(len(answerCounter))
@@ -375,15 +425,15 @@ def buildCustomMonitorValue(monitorItem, answerCounterByPromptKey, answeredSubmi
     return str(answeredCount)
 
 
-# This function checks whether a prompt matches any of the supplied keywords.
+# this function checks whether a prompt matches any of the supplied keywords.
 def promptLooksLike(promptText, keywords):
-    promptKey = normalizeStatsKey(promptText)
+    promptKey = normaliseStatsKey(promptText)
     return any(keyword in promptKey for keyword in keywords)
 
 
-# This function checks whether a prompt is asking for the subject team.
+# this  Function checks whether a prompt is asking for teh subject team
 def isSubjectTeamPrompt(promptText):
-    promptKey = normalizeStatsKey(promptText)
+    promptKey = normaliseStatsKey(promptText)
     if "team" not in promptKey:
         return False
     if any(keyword in promptKey for keyword in ["crt", "drt", "dispatch", "multiple answers can be selected", "select which team"]):
@@ -397,7 +447,7 @@ def isSubjectTeamPrompt(promptText):
 
 # This function checks whether a prompt is asking for the subject name.
 def isSubjectNamePrompt(promptText):
-    promptKey = normalizeStatsKey(promptText)
+    promptKey = normaliseStatsKey(promptText)
     if not any(keyword in promptKey for keyword in ["staff member", "member of staff", "person the form is about", "requiring feedback"]):
         return False
     if any(keyword in promptKey for keyword in ["supervisor", "email", "team", "select which team", "if known"]):
@@ -405,24 +455,24 @@ def isSubjectNamePrompt(promptText):
     return True
 
 
-# This function checks whether a prompt is asking for the supervisor name.
+# this  Function checks whether a prompt is asking for the supervisor name
 def isSupervisorNamePrompt(promptText):
-    promptKey = normalizeStatsKey(promptText)
+    promptKey = normaliseStatsKey(promptText)
     return ("supervisor" in promptKey) and ("email" not in promptKey)
 
 
-# This function checks whether a prompt is asking for detailed feedback text.
+# this  Function checks whether a prompt is asking for detailed feedback text
 def isFeedbackCommentPrompt(promptText):
-    promptKey = normalizeStatsKey(promptText)
+    promptKey = normaliseStatsKey(promptText)
     return any(keyword in promptKey for keyword in ["comment", "feedback to be given", "additional detail", "what happened", "summary detail"])
 
 
 # This function cleans a stats label before it is counted or displayed.
 def sanitizeStatsEntityValue(value, entityType="generic"):
-    valueText = normalizeStatsText(value)
+    valueText = normaliseStatsText(value)
     if not valueText:
         return ""
-    valueKey = normalizeStatsKey(valueText)
+    valueKey = normaliseStatsKey(valueText)
     if re.fullmatch(r"example[\s_-]*\d+", valueText, flags=re.IGNORECASE):
         return ""
     if entityType == "team" and valueKey in {"unknown", "n/a", "na", "none", "not known", "not sure", "hello", "test"}:
@@ -432,7 +482,7 @@ def sanitizeStatsEntityValue(value, entityType="generic"):
 
 # This function checks whether a prompt should be treated as identity-only data.
 def isIdentityPrompt(promptText):
-    promptKey = normalizeStatsKey(promptText)
+    promptKey = normaliseStatsKey(promptText)
     identityKeywords = [
         "email",
         "log number",
@@ -448,10 +498,10 @@ def isIdentityPrompt(promptText):
     return any(keyword in promptKey for keyword in identityKeywords)
 
 
-# This function checks whether an answer should count as an issue signal.
+# this  Function checks whether an answer should count as an issue signal
 def answerLooksLikeIssue(promptText, answerLabel):
-    promptKey = normalizeStatsKey(promptText)
-    answerKey = normalizeStatsKey(answerLabel)
+    promptKey = normaliseStatsKey(promptText)
+    answerKey = normaliseStatsKey(answerLabel)
     if not answerKey:
         return False
     negativeValues = {"no", "incorrect", "not correct", "false", "failed", "fail", "poor", "late", "missed"}
@@ -478,14 +528,14 @@ def monthLabelFromKey(value):
         return value
 
 
-# This function builds a short issue summary from a submission answer set.
+# this  Function builds a short issue summary from a submission answer set
 def buildIssueSummary(issues):
     if not issues:
         return "None recorded"
     return issues[0][0]
 
 
-# This function formats saved answer values for cards, tables, and summaries.
+# this  Function formats saved answer values for cards, tables, and summaries
 def formatAnswerForDisplay(questionObj, answerObj):
     if not answerObj:
         return ""
@@ -499,18 +549,18 @@ def formatAnswerForDisplay(questionObj, answerObj):
     if questionObj.response_type == "select":
         if answerObj.answer_option_value is None:
             return ""
-        optionValue = normalizeStatsText(answerObj.answer_option_value)
+        optionValue = normaliseStatsText(answerObj.answer_option_value)
         for opt in questionObj.options:
-            if normalizeStatsText(opt.option_value) == optionValue:
+            if normaliseStatsText(opt.option_value) == optionValue:
                 return (opt.option_label or opt.option_value or "").strip()
         return str(answerObj.answer_option_value).strip()
     if questionObj.response_type == "multi_select":
-        rawParts = [normalizeStatsText(value) for value in str(answerObj.answer_text or "").splitlines() if normalizeStatsText(value)]
+        rawParts = [normaliseStatsText(value) for value in str(answerObj.answer_text or "").splitlines() if normaliseStatsText(value)]
         if not rawParts:
             return ""
         optionMap = {}
         for opt in questionObj.options:
-            optionMap[normalizeStatsText(opt.option_value)] = (opt.option_label or opt.option_value or "").strip()
+            optionMap[normaliseStatsText(opt.option_value)] = (opt.option_label or opt.option_value or "").strip()
         return ", ".join([optionMap.get(part, part) for part in rawParts])
     return (answerObj.answer_text or "").strip()
 
@@ -522,17 +572,17 @@ def buildAnswerLabelList(questionObj, answerObj, optionLabelByQuestion=None):
     qid = int(questionObj.question_version_id)
     labels = []
     if answerObj.answer_option_value is not None:
-        optionValue = normalizeStatsText(answerObj.answer_option_value)
+        optionValue = normaliseStatsText(answerObj.answer_option_value)
         labels.append((optionLabelByQuestion or {}).get(qid, {}).get(optionValue, optionValue))
     elif answerObj.answer_text is not None:
         if questionObj.response_type == "multi_select":
             optionMap = (optionLabelByQuestion or {}).get(qid, {})
             for value in str(answerObj.answer_text).splitlines():
-                valueText = normalizeStatsText(value)
+                valueText = normaliseStatsText(value)
                 if valueText:
                     labels.append(optionMap.get(valueText, valueText))
         else:
-            valueText = normalizeStatsText(answerObj.answer_text)
+            valueText = normaliseStatsText(answerObj.answer_text)
             if valueText:
                 labels.append(valueText)
     elif answerObj.answer_number is not None:
@@ -540,24 +590,24 @@ def buildAnswerLabelList(questionObj, answerObj, optionLabelByQuestion=None):
         if isinstance(answerObj.answer_number, Decimal) and answerObj.answer_number == answerObj.answer_number.to_integral():
             numberText = str(int(answerObj.answer_number))
         labels.append(numberText)
-    return [normalizeStatsText(value) for value in labels if normalizeStatsText(value)]
+    return [normaliseStatsText(value) for value in labels if normaliseStatsText(value)]
 
 
-# This function prepares a structured answer summary for one submission.
+# this  Function prepares a structured answer summary for one submission
 def buildSubmissionAnswerSummary(questions, answerByQuestionVersionId):
     answerSummary = []
     for questionObj in questions:
         answerText = formatAnswerForDisplay(questionObj, answerByQuestionVersionId.get(int(questionObj.question_version_id)))
         answerSummary.append({
             "questionVersionId": int(questionObj.question_version_id),
-            "promptText": normalizeStatsText(questionObj.prompt_text),
-            "promptKey": normalizeStatsKey(questionObj.prompt_text),
+            "promptText": normaliseStatsText(questionObj.prompt_text),
+            "promptKey": normaliseStatsKey(questionObj.prompt_text),
             "answerText": answerText,
         })
     return answerSummary
 
 
-# This function finds the email recipients linked to a submission.
+# this function finds the email recipients linked to a submission.
 def findSubmissionEmailTargets(answerSummary):
     subjectName = ""
     subjectEmail = ""
@@ -590,9 +640,9 @@ def findSubmissionEmailTargets(answerSummary):
     }
 
 
-# This function builds the default subject and body used for submission emails.
+# this  Function builds the default subject and body used for submission emails
 def buildDefaultSubmissionEmail(formObj, formVersionObj, submissionObj, answerSummary, targetInfo):
-    formTitle = normalizeStatsText(formVersionObj.title if formVersionObj and formVersionObj.title else (formObj.title if formObj else "Review form")) or "Review form"
+    formTitle = normaliseStatsText(formVersionObj.title if formVersionObj and formVersionObj.title else (formObj.title if formObj else "Review form")) or "Review form"
     subjectName = targetInfo.get("subjectName") or "staff member"
     supervisorName = targetInfo.get("supervisorName") or "supervisor"
     subjectLine = f"{formTitle} submission for {subjectName}"
@@ -616,14 +666,14 @@ def buildDefaultSubmissionEmail(formObj, formVersionObj, submissionObj, answerSu
     return subjectLine, "\n".join(bodyLines)
 
 
-# This function prepares the data needed to preview submission emails in the form.
+# this  Function prepares teh data needed ot preview submission emails in the form
 def getEmailPreviewContext(formObj, formVersionObj, questions):
     answerSummary = []
     for questionObj in questions or []:
         answerSummary.append({
             "questionVersionId": int(questionObj.question_version_id),
-            "promptText": normalizeStatsText(questionObj.prompt_text),
-            "promptKey": normalizeStatsKey(questionObj.prompt_text),
+            "promptText": normaliseStatsText(questionObj.prompt_text),
+            "promptKey": normaliseStatsKey(questionObj.prompt_text),
             "answerText": "",
         })
     targetInfo = findSubmissionEmailTargets(answerSummary)
@@ -645,7 +695,7 @@ def sendSubmissionEmails(formObj, formVersionObj, submissionObj, questions, answ
     answerSummary = buildSubmissionAnswerSummary(questions, answerByQuestionVersionId)
     targetInfo = findSubmissionEmailTargets(answerSummary)
     defaultSubject, defaultBody = buildDefaultSubmissionEmail(formObj, formVersionObj, submissionObj, answerSummary, targetInfo)
-    emailSubject = normalizeStatsText(customSubject) or defaultSubject
+    emailSubject = normaliseStatsText(customSubject) or defaultSubject
     emailBody = str(customBody or "").strip() or defaultBody
     deliveryService = EmailDeliveryServiceFactory.create(app.config)
     return deliveryService.sendSubmissionEmail(
@@ -669,7 +719,7 @@ def sendSubmissionEmails(formObj, formVersionObj, submissionObj, questions, answ
 def buildSubmissionSummaryPayload(formObj, formVersionObj, submissionObj, questions, answerByQuestionVersionId):
     answerSummary = buildSubmissionAnswerSummary(questions, answerByQuestionVersionId)
     summaryService = LocalSubmissionSummaryServiceFactory.create(app.config)
-    formTitle = normalizeStatsText(formVersionObj.title if formVersionObj and formVersionObj.title else (formObj.title if formObj else "Review form")) or "Review form"
+    formTitle = normaliseStatsText(formVersionObj.title if formVersionObj and formVersionObj.title else (formObj.title if formObj else "Review form")) or "Review form"
     return summaryService.generateSummary(
         formTitle=formTitle,
         submissionId=int(submissionObj.submission_id),
@@ -678,13 +728,13 @@ def buildSubmissionSummaryPayload(formObj, formVersionObj, submissionObj, questi
     )
 
 
-# This function saves the generated summary back onto the submission record.
+# this  Function saves teh generated summary back onto the submission record
 def storeSubmissionSummary(submissionObj, summaryResult, commitChanges=True):
-    submissionObj.summary_text = normalizeStatsText(summaryResult.summaryText) or None
+    submissionObj.summary_text = normaliseStatsText(summaryResult.summaryText) or None
     submissionObj.summary_payload = str(summaryResult.payloadJson or "").strip() or None
-    submissionObj.summary_status = normalizeStatsText(summaryResult.status) or "generated"
-    submissionObj.summary_model = normalizeStatsText(summaryResult.modelName) or None
-    submissionObj.summary_error = normalizeStatsText(summaryResult.message) or None
+    submissionObj.summary_status = normaliseStatsText(summaryResult.status) or "generated"
+    submissionObj.summary_model = normaliseStatsText(summaryResult.modelName) or None
+    submissionObj.summary_error = normaliseStatsText(summaryResult.message) or None
     submissionObj.summary_generated_at = datetime.utcnow() if submissionObj.summary_status in ("generated", "disabled") else None
     if commitChanges:
         db.session.commit()
@@ -700,13 +750,13 @@ def generateAndStoreSubmissionSummary(formObj, formVersionObj, submissionObj, qu
             "summaryText": "",
             "payloadJson": "",
             "status": "error",
-            "modelName": normalizeStatsText(app.config.get("LOCAL_SUMMARY_MODEL_NAME") or "localRuleBasedSummariser-v1"),
+            "modelName": normaliseStatsText(app.config.get("LOCAL_SUMMARY_MODEL_NAME") or "localRuleBasedSummariser-v1"),
             "message": f"{type(exc).__name__}: {exc}",
         })()
     return storeSubmissionSummary(submissionObj, summaryResult, commitChanges=commitChanges)
 
 
-# This function converts posted form data into normalized answer records.
+# this function converts posted form data into normalised answer records.
 def parseSubmissionPayload(payloadText):
     try:
         return json.loads(payloadText) if payloadText else None
@@ -715,7 +765,7 @@ def parseSubmissionPayload(payloadText):
 
 app.config.from_object(Config)
 
-# Set the database connection environment variables for the target machine so the app does not rely on the local default credentials shown here.
+# Set  teh database connection environment variables for teh target machine so the app does not rely on the local default credentials shown here
 DB_USER = os.environ.get("DB_USER", "admin")
 DB_PASS = os.environ.get("DB_PASS", "A-Strong-Password")
 DB_HOST = os.environ.get("DB_HOST", "127.0.0.1")
@@ -730,7 +780,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
 
-# This section defines the database models used by forms, users, submissions, and branching.
+# this  Section defines the database models used by forms, users, submissions, and branching
 # This model stores role records used by the permission system.
 class Role(db.Model):
     __tablename__ = "roles"
@@ -739,7 +789,7 @@ class Role(db.Model):
     role_name = db.Column(db.String(32), unique=True, nullable=False)
 
 
-# This model stores application user accounts and their role links.
+# this  model stores application user accounts and their role links
 class User(db.Model):
     __tablename__ = "users"
 
@@ -769,7 +819,7 @@ class Form(db.Model):
     created_by = db.Column(db.BigInteger, db.ForeignKey("users.user_id"), nullable=False)
 
 
-# This model stores each saved version of a form and its metadata.
+# this  model stores each saved version of a form and its metadata
 class FormVersion(db.Model):
     __tablename__ = "form_versions"
 
@@ -782,7 +832,7 @@ class FormVersion(db.Model):
     notes = db.Column(db.String(255), nullable=True)
 
 
-# This model stores the reusable parent record for a question across versions.
+# this  model stores teh reusable parent record for a question across versions
 class Question(db.Model):
     __tablename__ = "questions"
 
@@ -835,7 +885,7 @@ class QuestionVersionOption(db.Model):
     question_version = db.relationship("QuestionVersion", back_populates="options")
 
 
-# This model stores section records used to group questions within a form version.
+# this  model stores Section records used ot group questions within a form version
 class FormVersionSection(db.Model):
     __tablename__ = "form_version_sections"
 
@@ -873,7 +923,7 @@ class FormQuestionBranching(db.Model):
     priority = db.Column(db.Integer, nullable=False, default=0)
 
 
-# This model stores a completed form submission and its summary data.
+# this  model stores a completed form submission and its summary data
 class FormSubmission(db.Model):
     __tablename__ = "form_submissions"
 
@@ -890,7 +940,7 @@ class FormSubmission(db.Model):
     summary_generated_at = db.Column(db.DateTime, nullable=True)
 
 
-# This model stores the individual answers linked to a submitted form.
+# this  model stores the individual answers linked to a submitted form
 class SubmissionAnswer(db.Model):
     __tablename__ = "submission_answers"
 
@@ -916,7 +966,7 @@ class UserSetupToken(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.current_timestamp())
 
 
-# This model stores the saved security question answers for a user.
+# this  model stores teh saved security question answers for a user
 class UserSecurityQuestion(db.Model):
     __tablename__ = "user_security_questions"
 
@@ -929,7 +979,7 @@ class UserSecurityQuestion(db.Model):
 
 
 # This section contains current-user helpers and permission checks used by the routes.
-# This function returns the logged-in user record for the current session.
+# this  Function returns the logged-in user record for the current session
 def getCurrentUser():
     userId = session.get("user_id")
     if not str(userId or "").isdigit():
@@ -937,7 +987,7 @@ def getCurrentUser():
     return User.query.filter_by(user_id=int(userId)).first()
 
 
-# This function returns the current user role name in a normalized format.
+# this  Function returns teh current user role name in a normalised format
 def getCurrentRoleName(userObj=None, refreshSession=True):
     if userObj is None:
         userObj = getCurrentUser()
@@ -946,10 +996,10 @@ def getCurrentRoleName(userObj=None, refreshSession=True):
     if userObj and userObj.role_id is not None:
         roleRow = db.session.query(Role.role_name).filter(Role.role_id == userObj.role_id).first()
         if roleRow:
-            roleName = normalizeRoleName(roleRow[0])
+            roleName = normaliseRoleName(roleRow[0])
 
     if not roleName:
-        roleName = normalizeRoleName(session.get("role_name"))
+        roleName = normaliseRoleName(session.get("role_name"))
 
     if refreshSession and userObj:
         session["role_name"] = roleName
@@ -961,16 +1011,16 @@ def getCurrentRoleName(userObj=None, refreshSession=True):
 # This function checks whether the current user has one of the supplied roles.
 def currentUserHasRole(*roleNames):
     currentRoleName = getCurrentRoleName(refreshSession=True)
-    normalizedRoleNames = {normalizeRoleName(roleName) for roleName in roleNames}
-    return currentRoleName in normalizedRoleNames
+    normalisedRoleNames = {normaliseRoleName(roleName) for roleName in roleNames}
+    return currentRoleName in normalisedRoleNames
 
 
-# This function checks whether the current user can manage accounts.
+# this function checks whether the current user can manage accounts.
 def currentUserCanManageAccounts():
     return currentUserHasRole("admin", "developer")
 
 
-# This function checks whether the current user can view every submission.
+# this  Function checks whether teh current user can view every submission
 def currentUserCanViewAllSubmissions():
     return currentUserHasRole("admin", "developer")
 
@@ -978,13 +1028,13 @@ def currentUserCanViewAllSubmissions():
 # This function checks whether the current user can assign a target role during account management.
 def currentUserCanAssignRole(targetRoleName, targetUser=None):
     currentRoleName = getCurrentRoleName(refreshSession=True)
-    normalizedTargetRoleName = normalizeRoleName(targetRoleName)
-    targetUserRoleName = normalizeRoleName(targetUser.role.role_name if (targetUser and targetUser.role) else None)
+    normalisedTargetRoleName = normaliseRoleName(targetRoleName)
+    targetUserRoleName = normaliseRoleName(targetUser.role.role_name if (targetUser and targetUser.role) else None)
 
     if currentRoleName == "developer":
-        return normalizedTargetRoleName in ("standard", "admin", "developer")
+        return normalisedTargetRoleName in ("standard", "admin", "developer")
     if currentRoleName == "admin":
-        return normalizedTargetRoleName in ("standard", "admin") and targetUserRoleName not in ("developer",)
+        return normalisedTargetRoleName in ("standard", "admin") and targetUserRoleName not in ("developer",)
     return False
 
 
@@ -998,12 +1048,12 @@ def getManageableRoleOptions(targetUser=None):
     ]
 
 
-# This function checks whether the current user can access developer branding tools.
+# this  Function checks whether teh current user can access developer branding tools
 def currentUserCanViewBranding():
     return currentUserHasRole("developer")
 
 
-# This function refreshes the stored session role details from the live database record.
+# this  Function refreshes the stored session role details from the live database record
 @app.before_request
 def syncCurrentUserContext():
     if not session.get("user_id"):
@@ -1040,7 +1090,7 @@ def loginRequired(view_func):
     return wrapper
 
 
-# This decorator restricts a route to admin users only.
+# this  decorator restricts a Route ot admin users only
 def adminRequired(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
@@ -1066,7 +1116,7 @@ def developerRequired(view_func):
     return wrapper
 
 
-# This decorator restricts a route to admin or developer editors.
+# this  decorator restricts a Route to admin or developer editors
 def editorRequired(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
@@ -1080,7 +1130,7 @@ def editorRequired(view_func):
     return wrapper
 
 
-# This section injects shared branding and theme values into every rendered template.
+# this  Section injects shared branding and theme values into every rendered template
 # This function injects branding, theme, and role values into each template render.
 @app.context_processor
 def injectBranding():
@@ -1096,9 +1146,9 @@ def injectBranding():
         siteLogoUrl = url_for("static", filename=f"uploads/logos/{logoFilename}")
     else:
         siteLogoUrl = url_for("static", filename=f"branding/{defaultLogoFilename}")
-    themeBackgroundColor = app.config.get("THEME_BACKGROUND_COLOR")
-    themeButtonColor = app.config.get("THEME_BUTTON_COLOR")
-    themeButtonTextColor = app.config.get("THEME_BUTTON_TEXT_COLOR")
+    themeBackgroundColour = app.config.get("THEME_BACKGROUND_COLOUR")
+    themeButtonColour = app.config.get("THEME_BUTTON_COLOUR")
+    themeButtonTextColour = app.config.get("THEME_BUTTON_TEXT_COLOUR")
     # Configure the Microsoft Graph environment values in config before expecting live email sending, otherwise the UI will stay in mock-email mode.
     graphConfigured = bool(app.config.get("GRAPH_CLIENT_ID") and app.config.get("GRAPH_CLIENT_SECRET") and app.config.get("GRAPH_TENANT_ID") and app.config.get("GRAPH_SENDER_EMAIL"))
     emailDeliveryMode = (app.config.get("EMAIL_DELIVERY_MODE") or "auto").strip().lower()
@@ -1106,9 +1156,9 @@ def injectBranding():
     currentRoleName = getCurrentRoleName(refreshSession=True)
     return {
         "siteLogoUrl": siteLogoUrl,
-        "themeBackgroundColor": themeBackgroundColor,
-        "themeButtonColor": themeButtonColor,
-        "themeButtonTextColor": themeButtonTextColor,
+        "themeBackgroundColour": themeBackgroundColour,
+        "themeButtonColour": themeButtonColour,
+        "themeButtonTextColour": themeButtonTextColour,
         "graphConfigured": graphConfigured,
         "usingMockEmailStrategy": usingMockEmailStrategy,
         "currentRoleName": currentRoleName,
@@ -1118,7 +1168,7 @@ def injectBranding():
     }
 
 
-# This route lets developers update the logo and theme branding values.
+# this  Route lets developers update teh logo and theme branding values
 @app.route("/admin/branding", methods=["GET", "POST"])
 @developerRequired
 def branding():
@@ -1144,7 +1194,7 @@ def branding():
     return render_template("branding.html")
 
 
-# This section keeps the database schema and default records in sync with the current code.
+# this section keeps the database schema and default records in sync with the current code.
 # This function applies the database checks and safe schema updates used by the app.
 def ensureDatabaseSchema():
     dbName = db.engine.url.database
@@ -1262,16 +1312,16 @@ def ensureDatabaseSchema():
     db.session.commit()
 
 
-# This function inserts the default user roles when they are missing.
+# this  Function inserts teh default user roles when they are missing
 def seedRolesIfMissing():
-    existingRoles = {normalizeRoleName(role.role_name): role for role in Role.query.all()}
+    existingRoles = {normaliseRoleName(role.role_name): role for role in Role.query.all()}
     for roleName in ("admin", "standard", "developer"):
         if roleName not in existingRoles:
             db.session.add(Role(role_name=roleName))
     db.session.commit()
 
 
-# This function runs the database readiness checks before the app serves requests.
+# this  Function runs the database readiness checks before the app serves requests
 @app.before_request
 def _ensureDbReady():
     if not app.config.get("_SEEDED_ROLES"):
@@ -1295,6 +1345,8 @@ def _getActiveFormAndLatestVersion():
     )
     return f, v
 
+
+#:)
 
 # This function gets the section layout and grouped questions for a form version.
 def _getSectionsForVersion(form_version_id: int):
@@ -1336,7 +1388,7 @@ def _getSectionsForVersion(form_version_id: int):
     return unsectioned_questions, sections_with_questions
 
 
-# This function gets every question for a form version in display order.
+# this  Function gets every question for a form version in display order
 def _getQuestionsForVersion(form_version_id: int):
     unsectioned_questions, sections_with_questions = _getSectionsForVersion(form_version_id)
     out = []
@@ -1349,7 +1401,7 @@ DEFAULT_LOCKED_TEAM_PROMPT = "What is the team (if known) of the person the form
 DEFAULT_LOCKED_TEAM_HINT = "Leave blank if the team is not known."
 
 
-# This function adds the locked team question when the form version does not have it yet.
+# this  Function adds teh locked team question when the form version does not have it yet
 def ensureLockedTeamQuestionPresent():
     formObj, latestVersion = _getActiveFormAndLatestVersion()
     if not formObj or not latestVersion:
@@ -1498,12 +1550,12 @@ def api_branching(form_version_id: int):
     return jsonify(_getBranchingForVersion(form_version_id))
 
 
-# This section contains the authentication and account-management routes.
+# this  Section contains teh authentication and account-management routes
 # This route handles the sign-in page and its authentication checks.
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
-        username = normalizeCredentialText(request.form.get("username") or "")
+        username = normaliseCredentialText(request.form.get("username") or "")
         password = request.form.get("password") or ""
 
         user = User.query.filter_by(username=username).first()
@@ -1517,7 +1569,7 @@ def index():
         session.clear()
         session["user_id"] = int(user.user_id)
         session["username"] = user.username
-        session["role_name"] = normalizeRoleName(user.role.role_name if user.role else None)
+        session["role_name"] = normaliseRoleName(user.role.role_name if user.role else None)
         session["session_version"] = int(user.session_version or 1)
         return redirect(url_for("dashboard"))
 
@@ -1531,13 +1583,13 @@ def signup():
     return redirect(url_for("index"))
 
 
-# This route handles the first-time password setup workflow.
+# this  Route handles teh first-time password setup workflow
 @app.route("/set-password", methods=["GET", "POST"])
 def set_password():
     questionMap = getSecurityQuestionMap()
     if request.method == "POST":
-        username = normalizeCredentialText(request.form.get("username") or "")
-        setupCode = normalizeCredentialText(request.form.get("setup_code") or "")
+        username = normaliseCredentialText(request.form.get("username") or "")
+        setupCode = normaliseCredentialText(request.form.get("setup_code") or "")
         newPassword = request.form.get("new_password") or ""
         confirmPassword = request.form.get("confirm_new_password") or ""
         selectedKeys = request.form.getlist("question_key")
@@ -1557,11 +1609,11 @@ def set_password():
         if len(selectedKeys) != 5 or len(answerValues) != 5:
             flash("Please choose and answer all 5 security questions.", "error")
             return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=username), 400
-        cleanKeys = [normalizeCredentialText(value) for value in selectedKeys]
+        cleanKeys = [normaliseCredentialText(value) for value in selectedKeys]
         if len(set(cleanKeys)) != 5 or any(key not in questionMap for key in cleanKeys):
             flash("Please choose 5 different security questions.", "error")
             return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=username), 400
-        cleanAnswers = [normalizeSecurityAnswer(value) for value in answerValues]
+        cleanAnswers = [normaliseSecurityAnswer(value) for value in answerValues]
         if any(not value for value in cleanAnswers):
             flash("Please answer all 5 security questions.", "error")
             return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=username), 400
@@ -1586,11 +1638,11 @@ def set_password():
         flash("Password set successfully. You can now sign in.", "success")
         return redirect(url_for("index"))
 
-    presetUsername = normalizeCredentialText(request.args.get("username") or "")
+    presetUsername = normaliseCredentialText(request.args.get("username") or "")
     return render_template("set_password.html", securityQuestions=securityQuestions, presetUsername=presetUsername)
 
 
-# This route handles the reset-key and security-question password reset flow.
+# this  Route handles the reset-key and security-question password reset flow
 @app.route("/reset-password", methods=["GET", "POST"])
 def reset_password():
     questionRows = []
@@ -1606,8 +1658,8 @@ def reset_password():
         formStep = request.form.get("form_step") or "verify"
         if formStep == "verify":
             clearPendingResetSession()
-            username = normalizeCredentialText(request.form.get("username") or "")
-            resetCode = normalizeCredentialText(request.form.get("reset_code") or "")
+            username = normaliseCredentialText(request.form.get("username") or "")
+            resetCode = normaliseCredentialText(request.form.get("reset_code") or "")
             user = User.query.filter_by(username=username).first()
             if not user or not user.is_active or not user.recovery_questions_set:
                 flash("Invalid reset details.", "error")
@@ -1630,7 +1682,7 @@ def reset_password():
             pendingUserId = session.get("pendingResetUserId")
             pendingTokenId = session.get("pendingResetTokenId")
             pendingQuestionIds = session.get("pendingResetQuestionIds") or []
-            username = normalizeCredentialText(request.form.get("username") or "")
+            username = normaliseCredentialText(request.form.get("username") or "")
             newPassword = request.form.get("new_password") or ""
             confirmPassword = request.form.get("confirm_new_password") or ""
             if not pendingUserId or not pendingTokenId or len(pendingQuestionIds) != 2:
@@ -1650,8 +1702,8 @@ def reset_password():
             if not passwordMeetsRules(newPassword) or newPassword != confirmPassword:
                 flash("Password must be at least 8 characters and both password fields must match.", "error")
                 return render_template("reset_password.html", resetQuestions=questionRows, presetUsername=username, questionStep=True), 400
-            answerOne = normalizeSecurityAnswer(request.form.get(f"question_answer_{questionRows[0].security_question_id}") or "")
-            answerTwo = normalizeSecurityAnswer(request.form.get(f"question_answer_{questionRows[1].security_question_id}") or "")
+            answerOne = normaliseSecurityAnswer(request.form.get(f"question_answer_{questionRows[0].security_question_id}") or "")
+            answerTwo = normaliseSecurityAnswer(request.form.get(f"question_answer_{questionRows[1].security_question_id}") or "")
             if not check_password_hash(questionRows[0].answer_hash, answerOne) or not check_password_hash(questionRows[1].answer_hash, answerTwo):
                 flash("Your recovery answers were not correct.", "error")
                 return render_template("reset_password.html", resetQuestions=questionRows, presetUsername=username, questionStep=True), 400
@@ -1680,8 +1732,8 @@ def manage_users():
     if request.method == "POST":
         formAction = request.form.get("form_action") or ""
         if formAction == "create_user":
-            username = normalizeCredentialText(request.form.get("username") or "")
-            displayName = normalizeCredentialText(request.form.get("display_name") or "")
+            username = normaliseCredentialText(request.form.get("username") or "")
+            displayName = normaliseCredentialText(request.form.get("display_name") or "")
             roleIdRaw = request.form.get("role_id") or ""
             roleObj = Role.query.filter_by(role_id=int(roleIdRaw)).first() if str(roleIdRaw).isdigit() else None
             if not username or len(username) > 64:
@@ -1726,7 +1778,7 @@ def manage_users():
             if not currentUserCanAssignRole(roleObj.role_name, targetUser=userObj):
                 flash("You do not have permission to change that account to the selected role.", "error")
                 return redirect(url_for("manage_users"))
-            if userObj.user_id == adminId and normalizeRoleName(roleObj.role_name) != getCurrentRoleName(refreshSession=True):
+            if userObj.user_id == adminId and normaliseRoleName(roleObj.role_name) != getCurrentRoleName(refreshSession=True):
                 flash("You cannot change your own account role here.", "warning")
                 return redirect(url_for("manage_users"))
             if int(userObj.role_id or 0) == int(roleObj.role_id):
@@ -1785,7 +1837,7 @@ def manage_users():
     )
 
 
-# This section contains the dashboard, submission viewing, and sign-out routes.
+# this  Section contains teh dashboard, submission viewing, and sign-out routes
 # This route shows the dashboard cards and the submissions visible to the current user.
 @app.route("/dashboard")
 @loginRequired
@@ -1808,7 +1860,7 @@ def dashboard():
     return render_template("dashboard.html", submissions=submissions, is_admin=canViewAllSubmissions, canViewAllSubmissions=canViewAllSubmissions)
 
 
-# This route shows a saved submission in its read-only versioned form.
+# this  Route shows a saved submission in its read-only versioned form
 @app.route("/submission/<int:submission_id>")
 @loginRequired
 def view_submission(submission_id: int):
@@ -1837,7 +1889,7 @@ def view_submission(submission_id: int):
     questions = (unsectioned_questions + [q for s in sections_with_questions for q in (s.get("questions") or [])])
     answerByQuestionVersionId = {int(answerRow.question_version_id): answerRow for answerRow in answer_rows}
 
-    if not normalizeStatsText(submission.summary_text) and normalizeStatsText(submission.summary_status) != "disabled":
+    if not normaliseStatsText(submission.summary_text) and normaliseStatsText(submission.summary_status) != "disabled":
         generateAndStoreSubmissionSummary(
             formObj=form_obj,
             formVersionObj=form_version,
@@ -1872,14 +1924,14 @@ def view_submission(submission_id: int):
     )
 
 
-# This route signs the current user out and clears their session.
+# this  Route signs teh current user out and clears their session
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("index"))
 
 
-# This section contains the live form, edit-form, and branching routes.
+# this section contains the live form, edit-form, and branching routes.
 # This route renders the live form and stores new submissions.
 @app.route("/form", methods=["GET", "POST"])
 @loginRequired
@@ -1971,7 +2023,7 @@ def form():
             flash("Form submitted. Email was captured by the mock email strategy for development and marking.", "info")
         else:
             flash(f"Form submitted. Email delivery could not be completed: {emailResult.message}", "warning")
-        if normalizeStatsText(sub.summary_status) == "error":
+        if normaliseStatsText(sub.summary_status) == "error":
             flash(f"The form was saved, but the local summary could not be generated: {sub.summary_error}", "warning")
         return redirect(url_for("form"))
 
@@ -1993,7 +2045,7 @@ def form():
     )
 
 
-# This route lets editors change the form structure and save a new version.
+# this  Route lets editors change teh form structure and save a new version
 @app.route("/edit-form", methods=["GET", "POST"])
 @editorRequired
 def editform():
@@ -2616,11 +2668,11 @@ def stats():
         questionById[qid] = questionVersion
         optionMap = {}
         for option in questionVersion.options:
-            optionMap[normalizeStatsText(option.option_value)] = normalizeStatsText(option.option_label) or normalizeStatsText(option.option_value)
+            optionMap[normaliseStatsText(option.option_value)] = normaliseStatsText(option.option_label) or normaliseStatsText(option.option_value)
         optionLabelByQuestion[qid] = optionMap
 
-        promptText = normalizeStatsText(questionVersion.prompt_text)
-        promptKey = normalizeStatsKey(promptText)
+        promptText = normaliseStatsText(questionVersion.prompt_text)
+        promptKey = normaliseStatsKey(promptText)
 
         if isSubjectNamePrompt(promptText):
             subjectQuestionIds.append(qid)
@@ -2678,7 +2730,7 @@ def stats():
         visibleSectionKeys = request.form.getlist("visibleSectionKeys")
         visibleSummaryCardKeys = request.form.getlist("visibleSummaryCardKeys")
 
-        removeMonitorIds = {normalizeStatsText(value) for value in request.form.getlist("removeCustomMonitorIds") if normalizeStatsText(value)}
+        removeMonitorIds = {normaliseStatsText(value) for value in request.form.getlist("removeCustomMonitorIds") if normaliseStatsText(value)}
         customMonitorItemsToSave = []
         existingMonitorIds = request.form.getlist("customMonitorIds")
         existingMonitorTitles = request.form.getlist("customMonitorTitles")
@@ -2687,12 +2739,12 @@ def stats():
         allowedMeasureTypes = {item["key"] for item in CUSTOM_MONITOR_MEASURE_OPTIONS}
 
         for index, monitorId in enumerate(existingMonitorIds):
-            cleanMonitorId = normalizeStatsText(monitorId)
+            cleanMonitorId = normaliseStatsText(monitorId)
             if not cleanMonitorId or cleanMonitorId in removeMonitorIds:
                 continue
-            title = normalizeStatsText(existingMonitorTitles[index] if index < len(existingMonitorTitles) else "")
-            questionKey = normalizeStatsKey(existingMonitorQuestionKeys[index] if index < len(existingMonitorQuestionKeys) else "")
-            measureType = normalizeStatsText(existingMonitorMeasureTypes[index] if index < len(existingMonitorMeasureTypes) else "")
+            title = normaliseStatsText(existingMonitorTitles[index] if index < len(existingMonitorTitles) else "")
+            questionKey = normaliseStatsKey(existingMonitorQuestionKeys[index] if index < len(existingMonitorQuestionKeys) else "")
+            measureType = normaliseStatsText(existingMonitorMeasureTypes[index] if index < len(existingMonitorMeasureTypes) else "")
             if questionKey not in monitorQuestionMap:
                 continue
             if measureType not in allowedMeasureTypes:
@@ -2706,9 +2758,9 @@ def stats():
                 "measureType": measureType,
             })
 
-        newCustomMonitorTitle = normalizeStatsText(request.form.get("newCustomMonitorTitle"))
-        newCustomMonitorQuestionKey = normalizeStatsKey(request.form.get("newCustomMonitorQuestionKey"))
-        newCustomMonitorMeasureType = normalizeStatsText(request.form.get("newCustomMonitorMeasureType"))
+        newCustomMonitorTitle = normaliseStatsText(request.form.get("newCustomMonitorTitle"))
+        newCustomMonitorQuestionKey = normaliseStatsKey(request.form.get("newCustomMonitorQuestionKey"))
+        newCustomMonitorMeasureType = normaliseStatsText(request.form.get("newCustomMonitorMeasureType"))
         if newCustomMonitorMeasureType not in allowedMeasureTypes:
             newCustomMonitorMeasureType = "answeredCount"
         if newCustomMonitorTitle and newCustomMonitorQuestionKey in monitorQuestionMap:
@@ -2746,7 +2798,7 @@ def stats():
 
     versionFilters = []
     for item in sorted(formVersions, key=lambda value: (int(value.version_number), int(value.form_version_id)), reverse=True):
-        versionTitle = normalizeStatsText(item.title) or normalizeStatsText(formObj.title) or "Untitled form"
+        versionTitle = normaliseStatsText(item.title) or normaliseStatsText(formObj.title) or "Untitled form"
         versionFilters.append({
             "formVersionId": int(item.form_version_id),
             "versionNumber": int(item.version_number),
@@ -2814,14 +2866,14 @@ def stats():
             if qid not in questionById:
                 continue
             questionVersion = questionById[qid]
-            promptText = normalizeStatsText(questionVersion.prompt_text)
-            promptKey = normalizeStatsKey(promptText)
+            promptText = normaliseStatsText(questionVersion.prompt_text)
+            promptKey = normaliseStatsKey(promptText)
             answerLabels = buildAnswerLabelList(questionVersion, answer, optionLabelByQuestion)
 
             if answerLabels:
                 answeredSubmissionCounterByPromptKey[promptKey] += 1
                 for answerLabel in answerLabels:
-                    cleanAnswerLabel = normalizeStatsText(answerLabel)
+                    cleanAnswerLabel = normaliseStatsText(answerLabel)
                     if cleanAnswerLabel:
                         answerCounterByPromptKey[promptKey][cleanAnswerLabel] += 1
 
@@ -2877,9 +2929,9 @@ def stats():
             "versionText": versionText,
         })
 
-    knownStaffCounter = Counter({name: count for name, count in staffCounter.items() if normalizeStatsKey(name) != "unknown"})
-    knownTeamCounter = Counter({name: count for name, count in teamCounter.items() if normalizeStatsKey(name) != "unknown"})
-    knownSupervisorCounter = Counter({name: count for name, count in supervisorCounter.items() if normalizeStatsKey(name) != "unknown"})
+    knownStaffCounter = Counter({name: count for name, count in staffCounter.items() if normaliseStatsKey(name) != "unknown"})
+    knownTeamCounter = Counter({name: count for name, count in teamCounter.items() if normaliseStatsKey(name) != "unknown"})
+    knownSupervisorCounter = Counter({name: count for name, count in supervisorCounter.items() if normaliseStatsKey(name) != "unknown"})
 
     currentDateTime = datetime.now()
     startOfToday = currentDateTime.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -2949,8 +3001,8 @@ def stats():
             if qid not in questionById:
                 continue
             questionVersion = questionById[qid]
-            promptText = normalizeStatsText(questionVersion.prompt_text)
-            promptKey = normalizeStatsKey(promptText)
+            promptText = normaliseStatsText(questionVersion.prompt_text)
+            promptKey = normaliseStatsKey(promptText)
             if promptKey not in trackedQuestionKeySet:
                 continue
             answerValues = buildAnswerLabelList(questionVersion, answer, optionLabelByQuestion)

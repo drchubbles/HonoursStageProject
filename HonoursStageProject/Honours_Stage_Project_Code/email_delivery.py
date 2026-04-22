@@ -17,7 +17,7 @@ class EmailDeliveryResult:
     recipients: list[str]
 
 
-# This base class defines the interface used by all email delivery strategies.
+# this  base class defines teh interface used by all email delivery strategies
 class BaseEmailDeliveryStrategy:
 
     # This method defines the shared email-sending interface used by delivery strategies.
@@ -28,12 +28,12 @@ class BaseEmailDeliveryStrategy:
 # This strategy writes email payloads to a local log instead of sending them live.
 class MockEmailDeliveryStrategy(BaseEmailDeliveryStrategy):
 
-    # This method handles init for mock email delivery strategy.
+    # this  Method handles init for mock email delivery strategy
     def __init__(self, logPath):
         self.logPath = logPath
 
 
-    # This method handles submission email for mock email delivery strategy.
+    # this  Method handles submission email for mock email delivery strategy
     def sendSubmissionEmail(self, recipients, subject, body, metadata):
         recipients = [str(value).strip() for value in recipients or [] if str(value).strip()]
         if not recipients:
@@ -55,10 +55,10 @@ class MockEmailDeliveryStrategy(BaseEmailDeliveryStrategy):
 
 
 # This strategy sends submission emails through Microsoft Graph when configured.
-# Set the Graph client, tenant, and sender values in config before switching a deployment to live email sending.
+# Set  teh Graph client, tenant, and sender values in config before switching a deployment ot live email sending
 class GraphEmailDeliveryStrategy(BaseEmailDeliveryStrategy):
 
-    # This method handles init for graph email delivery strategy.
+    # this method handles init for graph email delivery strategy.
     def __init__(self, clientId, clientSecret, tenantId, senderEmail):
         self.clientId = str(clientId or "").strip()
         self.clientSecret = str(clientSecret or "").strip()
@@ -66,12 +66,12 @@ class GraphEmailDeliveryStrategy(BaseEmailDeliveryStrategy):
         self.senderEmail = str(senderEmail or "").strip()
 
 
-    # This method handles configured for graph email delivery strategy.
+    # this  Method handles configured for graph email delivery strategy
     def isConfigured(self):
         return bool(self.clientId and self.clientSecret and self.tenantId and self.senderEmail)
 
 
-    # This method handles access token for graph email delivery strategy.
+    # this  Method handles access token for graph email delivery strategy
     def getAccessToken(self):
         tokenUrl = f"https://login.microsoftonline.com/{self.tenantId}/oauth2/v2.0/token"
         tokenBody = parse.urlencode({
@@ -118,10 +118,10 @@ class GraphEmailDeliveryStrategy(BaseEmailDeliveryStrategy):
         return EmailDeliveryResult(status="sent", message="Email sent through Microsoft Graph.", recipients=recipients)
 
 
-# This service wraps the active email strategy and standardizes error handling.
+# This service wraps the active email strategy and standardises error handling.
 class EmailDeliveryService:
 
-    # This method handles init for email delivery service.
+    # this  Method handles init for email delivery service
     def __init__(self, strategy):
         self.strategy = strategy
 
@@ -134,10 +134,10 @@ class EmailDeliveryService:
             return EmailDeliveryResult(status="failed", message=str(ex), recipients=[str(value).strip() for value in recipients or [] if str(value).strip()])
 
 
-# This factory chooses the most suitable email delivery service for the current config.
+# this factory chooses the most suitable email delivery service for the current config.
 class EmailDeliveryServiceFactory:
 
-    # This method builds the right email delivery service for the current configuration.
+    # this  Method builds teh right email delivery service for the current configuration
     @staticmethod
     def create(config):
         graphStrategy = GraphEmailDeliveryStrategy(
@@ -150,7 +150,7 @@ class EmailDeliveryServiceFactory:
         if mode == "graph" and graphStrategy.isConfigured():
             return EmailDeliveryService(graphStrategy)
         if mode == "graph" and not graphStrategy.isConfigured():
-            # Configure the Graph environment values first or this will safely fall back to the mock email log instead of sending live mail.
+            # Configure  teh Graph environment values first or this will safely fall back to the mock email log instead of sending live mail
             return EmailDeliveryService(MockEmailDeliveryStrategy(config.get("MOCK_EMAIL_LOG_PATH") or "mockEmailLog.jsonl"))
         if mode == "mock":
             return EmailDeliveryService(MockEmailDeliveryStrategy(config.get("MOCK_EMAIL_LOG_PATH") or "mockEmailLog.jsonl"))

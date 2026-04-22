@@ -264,10 +264,26 @@
 </div>
 {% endif %}
 
+{# This block stores the server-rendered email preview data as JSON so the editor does nto try to parse Jinja as broken JavaScript. #}
+<script type="application/json" id="emailQuestionPromptsData">{{ emailQuestionPrompts|tojson if emailQuestionPrompts is defined else '[]' }}</script>
+<script type="application/json" id="defaultEmailSubjectTemplateData">{{ (defaultEmailSubject or '')|tojson }}</script>
+<script type="application/json" id="defaultEmailBodyTemplateData">{{ (defaultEmailBody or '')|tojson }}</script>
+
 <script>
-  const emailQuestionPrompts = {{ emailQuestionPrompts|tojson if emailQuestionPrompts is defined else '[]' }};
-  const defaultEmailSubjectTemplate = {{ (defaultEmailSubject or '')|tojson }};
-  const defaultEmailBodyTemplate = {{ (defaultEmailBody or '')|tojson }};
+  // This JavaScript reads the JSON data rendered by Flask, powers the email editor preview, and also supports the developer autofill helper on the live form.
+  function parseJsonScript(scriptId, fallbackValue) {
+    const scriptEl = document.getElementById(scriptId);
+    if (!scriptEl) return fallbackValue;
+    try {
+      return JSON.parse(scriptEl.textContent || '');
+    } catch (error) {
+      return fallbackValue;
+    }
+  }
+
+  const emailQuestionPrompts = parseJsonScript('emailQuestionPromptsData', []);
+  const defaultEmailSubjectTemplate = parseJsonScript('defaultEmailSubjectTemplateData', '');
+  const defaultEmailBodyTemplate = parseJsonScript('defaultEmailBodyTemplateData', '');
 
   const developerLoremValues = [
     "Hello",

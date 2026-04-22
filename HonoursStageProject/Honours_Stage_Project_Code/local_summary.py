@@ -7,25 +7,25 @@ import re
 from dataclasses import dataclass
 
 
-# This function tidies summary text before it is reused by the summariser.
-def normalizeSummaryText(value):
+# this  Function tidies summary text before it is reused by teh summariser
+def normaliseSummaryText(value):
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
 # This function creates a comparison key from summary text.
-def normalizeSummaryKey(value):
-    return normalizeSummaryText(value).lower()
+def normaliseSummaryKey(value):
+    return normaliseSummaryText(value).lower()
 
 
-# This function shortens summary text to a safe display length.
+# this  Function shortens summary text to a safe display length
 def truncateSummaryText(value, maxLength):
-    valueText = normalizeSummaryText(value)
+    valueText = normaliseSummaryText(value)
     if len(valueText) <= maxLength:
         return valueText
     return valueText[: max(0, int(maxLength) - 1)].rstrip() + "…"
 
 
-# This data class stores the result returned by the local summariser service.
+# this  data class stores teh result returned by the local summariser service
 @dataclass
 class LocalSubmissionSummaryResult:
     status: str
@@ -41,13 +41,13 @@ class LocalSubmissionSummaryServiceFactory:
     # This method builds the right local summariser service for the current configuration.
     @staticmethod
     def create(config):
-        summaryMode = normalizeSummaryKey((config or {}).get("LOCAL_SUMMARY_MODE") or "rule_based")
+        summaryMode = normaliseSummaryKey((config or {}).get("LOCAL_SUMMARY_MODE") or "rule_based")
         if summaryMode in {"off", "disabled", "none"}:
             return DisabledSubmissionSummaryService(config)
         return RuleBasedSubmissionSummaryService(config)
 
 
-# This service returns a disabled result when local summarising is turned off.
+# this  service returns a disabled result when local summarising is turned off
 class DisabledSubmissionSummaryService:
 
     # This method handles init for disabled submission summary service.
@@ -58,10 +58,10 @@ class DisabledSubmissionSummaryService:
     # This method returns a disabled summary result without generating any summary text.
     def generateSummary(self, *, formTitle, submissionId, submittedAt, answerSummary):
         payload = {
-            "formTitle": normalizeSummaryText(formTitle),
+            "formTitle": normaliseSummaryText(formTitle),
             "submissionId": submissionId,
             "submittedAt": str(submittedAt) if submittedAt else None,
-            "answeredQuestionCount": len([item for item in (answerSummary or []) if normalizeSummaryText((item or {}).get("answerText"))]),
+            "answeredQuestionCount": len([item for item in (answerSummary or []) if normaliseSummaryText((item or {}).get("answerText"))]),
             "summaryMode": "disabled",
         }
         return LocalSubmissionSummaryResult(
@@ -73,13 +73,13 @@ class DisabledSubmissionSummaryService:
         )
 
 
-# This service creates rule-based summaries from saved submission answers.
+# this  service creates rule-based summaries from saved submission answers
 class RuleBasedSubmissionSummaryService:
 
-    # This method handles init for rule based submission summary service.
+    # this  Method handles init for rule based submission summary service
     def __init__(self, config):
         self.config = config or {}
-        self.modelName = normalizeSummaryText(self.config.get("LOCAL_SUMMARY_MODEL_NAME") or "localRuleBasedSummariser-v3")
+        self.modelName = normaliseSummaryText(self.config.get("LOCAL_SUMMARY_MODEL_NAME") or "localRuleBasedSummariser-v3")
         try:
             self.maxDetailChars = int(self.config.get("LOCAL_SUMMARY_MAX_DETAIL_CHARS") or 320)
         except (TypeError, ValueError):
@@ -90,14 +90,14 @@ class RuleBasedSubmissionSummaryService:
     def generateSummary(self, *, formTitle, submissionId, submittedAt, answerSummary):
         answeredItems = []
         for item in answerSummary or []:
-            promptText = normalizeSummaryText((item or {}).get("promptText"))
-            answerText = normalizeSummaryText((item or {}).get("answerText"))
+            promptText = normaliseSummaryText((item or {}).get("promptText"))
+            answerText = normaliseSummaryText((item or {}).get("answerText"))
             if not promptText or not answerText:
                 continue
             answeredItems.append({
                 "questionVersionId": (item or {}).get("questionVersionId"),
                 "promptText": promptText,
-                "promptKey": normalizeSummaryKey((item or {}).get("promptKey") or promptText),
+                "promptKey": normaliseSummaryKey((item or {}).get("promptKey") or promptText),
                 "answerText": answerText,
             })
 
@@ -130,7 +130,7 @@ class RuleBasedSubmissionSummaryService:
         )
 
         payload = {
-            "formTitle": normalizeSummaryText(formTitle),
+            "formTitle": normaliseSummaryText(formTitle),
             "submissionId": submissionId,
             "submittedAt": str(submittedAt) if submittedAt else None,
             "subjectName": targetInfo.get("subjectName") or "",
@@ -155,7 +155,7 @@ class RuleBasedSubmissionSummaryService:
         )
 
 
-    # This method handles targets for rule based submission summary service.
+    # this  Method handles targets for rule based submission summary service
     def findTargets(self, answerSummary):
         subjectName = ""
         subjectEmail = ""
@@ -165,7 +165,7 @@ class RuleBasedSubmissionSummaryService:
         team = ""
         for item in answerSummary or []:
             promptKey = item.get("promptKey") or ""
-            answerText = normalizeSummaryText(item.get("answerText"))
+            answerText = normaliseSummaryText(item.get("answerText"))
             if not answerText:
                 continue
             if ("staff member" in promptKey or "member of staff" in promptKey or "requiring feedback" in promptKey) and "supervisor" not in promptKey and "email" not in promptKey and not subjectName:
@@ -205,7 +205,7 @@ class RuleBasedSubmissionSummaryService:
         return any(keyword in promptKey for keyword in identityKeywords)
 
 
-    # This method handles detail prompt for rule based submission summary service.
+    # this  Method handles detail prompt for rule based submission summary service
     def isDetailPrompt(self, promptKey):
         detailKeywords = [
             "comment",
@@ -223,7 +223,7 @@ class RuleBasedSubmissionSummaryService:
         return any(keyword in promptKey for keyword in detailKeywords)
 
 
-    # This method handles context prompt for rule based submission summary service.
+    # this  Method handles context prompt for rule based submission summary service
     def isContextPrompt(self, promptKey):
         contextKeywords = [
             "opening code",
@@ -241,7 +241,7 @@ class RuleBasedSubmissionSummaryService:
 
     # This method handles issue-signal checks for issue for rule based submission summary service.
     def answerLooksLikeIssue(self, promptKey, answerText):
-        answerKey = normalizeSummaryKey(answerText)
+        answerKey = normaliseSummaryKey(answerText)
         if not answerKey:
             return False
 
@@ -261,16 +261,16 @@ class RuleBasedSubmissionSummaryService:
         return False
 
 
-    # This method handles pair text for rule based submission summary service.
+    # this method handles pair text for rule based submission summary service.
     def buildPairText(self, item, maxAnswerLength=90):
-        promptText = normalizeSummaryText((item or {}).get("promptText") or "Question")
+        promptText = normaliseSummaryText((item or {}).get("promptText") or "Question")
         answerText = truncateSummaryText((item or {}).get("answerText") or "", maxAnswerLength)
         return f"{promptText}: {answerText}"
 
 
-    # This method handles trivial detail value for rule based submission summary service.
+    # this  Method handles trivial detail value for rule based submission summary service
     def isTrivialDetailValue(self, value):
-        answerKey = normalizeSummaryKey(value)
+        answerKey = normaliseSummaryKey(value)
         if not answerKey:
             return True
         trivialValues = {
@@ -310,7 +310,7 @@ class RuleBasedSubmissionSummaryService:
 
     # This method handles meaningful team value for rule based submission summary service.
     def isMeaningfulTeamValue(self, value):
-        answerKey = normalizeSummaryKey(value)
+        answerKey = normaliseSummaryKey(value)
         if not answerKey:
             return False
         if re.fullmatch(r"example\s*\d+", answerKey):
@@ -320,11 +320,11 @@ class RuleBasedSubmissionSummaryService:
 
     # This method handles subject label for rule based submission summary service.
     def buildSubjectLabel(self, targetInfo):
-        subjectName = normalizeSummaryText(targetInfo.get("subjectName"))
+        subjectName = normaliseSummaryText(targetInfo.get("subjectName"))
         return subjectName or "the named staff member"
 
 
-    # This method handles context sentence for rule based submission summary service.
+    # this  Method handles context sentence for rule based submission summary service
     def buildContextSentence(self, contextItems):
         if not contextItems:
             return ""
@@ -347,10 +347,10 @@ class RuleBasedSubmissionSummaryService:
         return ""
 
 
-    # This method handles supervisor sentence for rule based submission summary service.
+    # this  Method handles supervisor sentence for rule based submission summary service
     def buildSupervisorSentence(self, targetInfo):
-        supervisorName = normalizeSummaryText(targetInfo.get("supervisorName"))
-        supervisorEmail = normalizeSummaryText(targetInfo.get("supervisorEmail"))
+        supervisorName = normaliseSummaryText(targetInfo.get("supervisorName"))
+        supervisorEmail = normaliseSummaryText(targetInfo.get("supervisorEmail"))
         if supervisorName:
             return f"Supervisor recorded for follow-up: {supervisorName}."
         if supervisorEmail:
@@ -363,7 +363,7 @@ class RuleBasedSubmissionSummaryService:
         issueFragments = []
         for item in issueItems[:3]:
             promptKey = item.get("promptKey") or ""
-            answerKey = normalizeSummaryKey(item.get("answerText") or "")
+            answerKey = normaliseSummaryKey(item.get("answerText") or "")
             if "opening code" in promptKey and any(keyword in promptKey for keyword in ["correct", "accurate", "right"]):
                 if answerKey in {"no", "false", "incorrect", "not correct", "failed", "fail", "poor"}:
                     issueFragments.append("the opening code was marked as incorrect")
@@ -380,9 +380,9 @@ class RuleBasedSubmissionSummaryService:
         return f"Potential issues recorded were {'; '.join(issueFragments)}."
 
 
-    # This method handles prompt matches issue area for rule based submission summary service.
+    # this  Method handles prompt matches issue area for rule based submission summary service
     def promptMatchesIssueArea(self, item, issueItems):
-        promptKey = normalizeSummaryKey((item or {}).get("promptKey") or (item or {}).get("promptText") or "")
+        promptKey = normaliseSummaryKey((item or {}).get("promptKey") or (item or {}).get("promptText") or "")
         if not promptKey:
             return False
         if "crime" in promptKey and ("missed" in promptKey or "negated" in promptKey):
@@ -411,9 +411,9 @@ class RuleBasedSubmissionSummaryService:
         return None
 
 
-    # This method handles summary text for rule based submission summary service.
+    # this  Method handles summary text for rule based submission summary service
     def buildSummaryText(self, *, formTitle, targetInfo, issueItems, detailItems, contextItems, neutralItems):
-        cleanFormTitle = normalizeSummaryText(formTitle) or "form"
+        cleanFormTitle = normaliseSummaryText(formTitle) or "form"
         sentenceParts = [f"This {cleanFormTitle} submission relates to {self.buildSubjectLabel(targetInfo)}."]
 
         if issueItems:
@@ -443,4 +443,4 @@ class RuleBasedSubmissionSummaryService:
         if supervisorSentence:
             sentenceParts.append(supervisorSentence)
 
-        return " ".join(part for part in sentenceParts if normalizeSummaryText(part))
+        return " ".join(part for part in sentenceParts if normaliseSummaryText(part))

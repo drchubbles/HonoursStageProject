@@ -1,4 +1,4 @@
-{# This template renders the configurable stats dashboard and charts. #}
+{#  this template renders teh configurable stats dashboard and charts#}
 {% extends "base.html" %}
 {% block title %}Stats{% endblock %}
 
@@ -570,7 +570,7 @@
     const chartData = {{ chartData | tojson }};
     const visibleSectionKeys = {{ visibleSectionKeys | tojson }};
 
-    // This function builds a bar chart for the supplied stats data.
+    // this  Function builds a bar chart for teh supplied stats data
     function makeBarChart(canvasId, labels, values, labelText) {
       const canvas = document.getElementById(canvasId);
       if (!canvas || !labels || !labels.length) return;
@@ -612,7 +612,7 @@
       });
     }
 
-    // This function builds the monthly submissions trend chart.
+    // this  Function builds the monthly submissions trend chart
     function makeTrendChart() {
       const canvas = document.getElementById('trendChart');
       if (!canvas || !chartData.trendLabels || !chartData.trendLabels.length) return;

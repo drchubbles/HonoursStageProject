@@ -1,4 +1,4 @@
-{# This template renders the form editor, section tools, and live branching editor. #}
+{# this template renders the form editor, section tools, and live branching editor. #}
 {% extends "base.html" %}
 {% block title %}Edit Form{% endblock %}
 
@@ -284,12 +284,12 @@
       .filter(Boolean);
   }
 
-  // This function handles find by source key for the current page.
+  // this  Function handles find by source key for teh current page
   function findBySourceKey(selector, sourceKey) {
     return Array.from(document.querySelectorAll(selector)).find((element) => String(element.dataset.sourceKey || "") === String(sourceKey)) || null;
   }
 
-  // This function handles get branch panel by source for the current page.
+  // this function handles get branch panel by source for the current page.
   function getBranchPanelBySource(sourceKey) {
     return findBySourceKey(".branchPanel", sourceKey);
   }
@@ -299,12 +299,12 @@
     return findBySourceKey(".branchState", sourceKey);
   }
 
-  // This function handles get branch toggle for the current page.
+  // this  Function handles get branch toggle for teh current page
   function getBranchToggle(sourceKey) {
     return findBySourceKey(".branchToggle", sourceKey);
   }
 
-  // This function handles get question source key for the current page.
+  // this  Function handles get question source key for the current page
   function getQuestionSourceKey(row) {
     if (!row) return "";
     if (row.dataset.kind === "existing") return String(row.dataset.qvid || "");
@@ -322,7 +322,7 @@
     return (promptInput && promptInput.value.trim()) ? promptInput.value.trim() : `Question ${sourceKey}`;
   }
 
-  // This function handles get question type for the current page.
+  // this  Function handles get question type for teh current page
   function getQuestionType(row) {
     const sourceKey = getQuestionSourceKey(row);
     if (!sourceKey) return "text";
@@ -344,7 +344,7 @@
     return splitOptionLines(optionsArea ? optionsArea.value : "");
   }
 
-  // This function gathers the current unsaved question draft state from the page.
+  // this  Function gathers the current unsaved question draft state from the page
   function collectDraftQuestions() {
     return Array.from(document.querySelectorAll('.qrow[data-kind="existing"], .qrow[data-kind="new"]')).map((row) => ({
       id: getQuestionSourceKey(row),
@@ -354,7 +354,7 @@
     })).filter((question) => question.id);
   }
 
-  // This function refreshes a select element with the latest available options.
+  // this  Function refreshes a select element with teh latest available options
   function fillSelectOptions(selectElement, placeholderText, options, selectedValue) {
     if (!selectElement) return;
     selectElement.innerHTML = "";
@@ -422,7 +422,7 @@
     fillSelectOptions(targetSelect, "Show question", targetOptions, targetValue);
   }
 
-  // This function loads the saved branching state into one branch editor panel.
+  // this  Function loads teh saved branching state into one branch editor panel
   function initBranchPanel(panel) {
     if (!panel || panel.dataset.branchReady === "1") return;
     const sourceKey = String(panel.dataset.sourceKey || "");
@@ -486,7 +486,7 @@
     }
   }
 
-  // This function updates the editor view for an existing question type change.
+  // this  Function updates teh editor view for an existing question type change
   function toggleExistingQuestionType(selectElement) {
     const questionId = String(selectElement.dataset.qvid || "");
     const optionsBlock = document.getElementById("existingOptions_" + questionId);
@@ -518,7 +518,7 @@
     refreshAllBranchPanels();
   }
 
-  // This function updates the editor view for a new question type change.
+  // this  Function updates the editor view for a new question type change
   function toggleNewQuestionType(selectElement) {
     const row = selectElement.closest(".newQRow");
     if (!row) return;
@@ -564,7 +564,7 @@
     refreshAllBranchPanels();
   }
 
-  // This function adds a new draft section block to the edit form.
+  // this  Function adds a new draft Section block ot teh edit form
   function addSection() {
     const container = document.getElementById("questionsList");
     if (!container) return;
@@ -697,7 +697,7 @@
     row.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  // This function renumbers the visible draft questions in display order.
+  // this  Function renumbers the visible draft questions in display order
   function refreshQuestionNumbers() {
     const rows = Array.from(document.querySelectorAll("#questionsList .qrow"));
     let questionNumber = 1;
@@ -711,7 +711,7 @@
     });
   }
 
-  // This function wires the live draft editor events after the page loads.
+  // this  Function wires teh live draft editor events after the page loads
   function bindDraftEditorEvents(scope = document) {
     scope.querySelectorAll('.branchToggle').forEach((toggle) => {
       if (toggle.dataset.boundToggle === "1") return;
