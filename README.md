@@ -150,6 +150,21 @@ The application reads:
 
 If email integration is being used, the Microsoft Graph related values must also be configured in the target environment/configuration.
 
+## Developer configuration checks before first run
+Before running this system on an internal server, the developer should ensure the following have been checked and updated:
+
+- change the Flask/application `SECRET_KEY` so the system is not using a development or placeholder value
+- confirm the code is connected to the correct internal MySQL database rather than a local test database
+- set `DB_USER`, `DB_PASS`, `DB_HOST`, `DB_PORT`, and `DB_NAME` to the real server/database values
+- ensure the database user has the correct permissions for reading, writing, and any setup actions required by the system
+- review any bootstrap/default accounts and change their details where needed
+- configure any live Microsoft Graph / email settings if the deployment is intended to send real emails
+- confirm that upload folders, branding paths, and related file locations are valid on the target server
+- test login, form submission, dashboard loading, summary generation, and email behaviour before live use
+
+This section is  here so a developer does not just run the code as-is and assume it is already hooked up to teh real enviroment.
+
+
 ### 6. Install any remaining dependancies
 If the target machine has not been used for the project before, make sure all required libraries, drivers, and supporting packages are installed before starting the application.
 
@@ -227,12 +242,12 @@ To maintain the project over time, the following areas are likely to need the mo
 ### Recommended testing after changes
 After any meaningful update, it is recommended to test:
 - login/logout
-- account creation / setup flow
+- account creation/setup flow
 - password reset flow
 - form completion and submission
 - dashboard/statistics loading
 - branching behaviour
-- email preview / email sending behaviour
+- email preview/email sending behaviour
 - summary generation
 - role-restricted pages such as admin/developer features
 
